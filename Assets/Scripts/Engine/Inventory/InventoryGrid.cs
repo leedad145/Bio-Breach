@@ -1,28 +1,45 @@
 // =============================================================================
 // InventoryGrid.cs - 디아블로2 스타일 그리드 인벤토리 데이터
 // =============================================================================
+using System;
 using System.Collections.Generic;
 using UnityEngine;
+using BioBreach.Core.Item;
 using BioBreach.Engine.Item;
 
 namespace BioBreach.Engine.Inventory
 {
     /// <summary>
-    /// 그리드 상에 놓인 아이템 인스턴스
+    /// 그리드 상에 놓인 아이템 인스턴스.
+    /// IItem을 구현하며, PlayerController가 BindToPlayer로 Action1/Action2 람다를 주입한다.
     /// </summary>
-    public class ItemInstance
+    public class ItemInstance : IItem
     {
         public ItemDataSO data;
         public int count;
-        
+
         /// <summary>그리드 내 좌상단 위치</summary>
         public Vector2Int gridPos;
-        
+
         /// <summary>현재 회전 여부 (가로/세로 전환)</summary>
         public bool isRotated;
 
         public int Width  => isRotated ? data.gridHeight : data.gridWidth;
         public int Height => isRotated ? data.gridWidth  : data.gridHeight;
+
+        // 주입된 액션 델리게이트 (PlayerController가 BindToPlayer 통해 설정)
+        Func<bool> _action1;
+        Func<bool> _action2;
+
+        public bool Action1() => _action1?.Invoke() ?? false;
+        public bool Action2() => _action2?.Invoke() ?? false;
+
+        /// <summary>PlayerController(IPlayerContext 구현체)가 BindToPlayer에서 호출.</summary>
+        public void SetActions(Func<bool> a1, Func<bool> a2)
+        {
+            _action1 = a1;
+            _action2 = a2;
+        }
 
         public ItemInstance(ItemDataSO data, int count, Vector2Int gridPos, bool isRotated = false)
         {

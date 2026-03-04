@@ -1,5 +1,5 @@
 // =============================================================================
-// PlayerController.cs - 1인칭 플레이어 컨트롤러 (그리드 인벤토리 + 설치 미리보기)
+// PlayerController.cs - 1인칭 플레이어 컨트롤러
 // =============================================================================
 using UnityEngine;
 using BioBreach.Engine.Inventory;
@@ -13,15 +13,15 @@ namespace BioBreach.Controller.Player
     [RequireComponent(typeof(CharacterController))]
     [RequireComponent(typeof(PlayerInventory))]
     [RequireComponent(typeof(PlacementPreview))]
-    public class PlayerController : MonoBehaviour
+    public class PlayerController : MonoBehaviour, IPlayerContext
     {
         // =====================================================================
         // Inspector 설정
         // =====================================================================
 
         [Header("이동")]
-        public float moveSpeed       = 10f;
-        public float jumpHeight      = 3f;
+        public float moveSpeed        = 10f;
+        public float jumpHeight       = 3f;
         public float gravityMultiplier = 2f;
 
         [Header("카메라")]
@@ -33,7 +33,6 @@ namespace BioBreach.Controller.Player
         public float interactDistance = 20f;
 
         [Header("설치 (Placeable)")]
-        [Tooltip("설치 시 표면 법선 방향 오프셋")]
         public float placeNormalOffset = 0.05f;
 
         [Header("쿨다운")]
@@ -46,12 +45,10 @@ namespace BioBreach.Controller.Player
         public WorldManager worldManager;
 
         [Header("스팟라이트")]
-        [Tooltip("카메라 회전을 따라가는 속도 (낮을수록 느리게)")]
         public float lightFollowSpeed = 6f;
-        public float lightSpotAngle = 60f;
-        public float lightRange = 30f;
-        [Tooltip("빛 세기")]
-        public float lightIntensity = 1f;
+        public float lightSpotAngle   = 60f;
+        public float lightRange       = 30f;
+        public float lightIntensity   = 1f;
 
         [Header("디버그")]
         public bool showDebugUI = true;
@@ -72,17 +69,51 @@ namespace BioBreach.Controller.Player
 
         private float _lastActionTime = -999f;
 
-        // 이번 프레임 Raycast 캐시
+        // 매 프레임 캐시
         private bool       _cachedHitValid;
         private RaycastHit _cachedHit;
+        private bool       _primaryDown, _primaryHeld, _secondaryDown, _secondaryHeld;
 
-        // 현재 핫바 선택 아이템이 Placeable이고 미리보기 중인 prefab 추적
-        private GameObject _lastPreviewPrefab;
+        private GameObject   _lastPreviewPrefab;
+        private ItemInstance _lastBoundItem; // 마지막으로 BindToPlayer한 인스턴스
 
-        /// <summary>
-        /// true이면 모든 플레이어 입력 차단 (인벤토리 UI 등에서 설정)
-        /// </summary>
         public bool UIBlocked { get; set; } = false;
+
+        // =====================================================================
+        // IPlayerContext 구현
+        // =====================================================================
+
+        public PlayerInventory Inventory       => _inventory;
+        public float           PlaceNormalOffset => placeNormalOffset;
+        public bool            HasHit          => _cachedHitValid;
+        public RaycastHit      Hit             => _cachedHit;
+        public Vector3         AttackOrigin    => _camera != null ? _camera.transform.position : transform.position;
+        public Vector3         AttackDirection => _camera != null ? _camera.transform.forward  : transform.forward;
+        public bool            PrimaryDown     => _primaryDown;
+        public bool            PrimaryHeld     => _primaryHeld;
+        public bool            SecondaryDown   => _secondaryDown;
+        public bool            SecondaryHeld   => _secondaryHeld;
+
+        public bool CanPlaceAt(Vector3 pos)
+            => Vector3.Distance(pos, transform.position) > _controller.radius + 0.5f;
+
+        public VoxelType GetVoxelTypeAt(Vector3 worldPos)
+        {
+            if (worldManager == null) return VoxelType.Air;
+            foreach (var kvp in worldManager.ActiveChunks)
+            {
+                var chunk = kvp.Value;
+                if (chunk.ContainsPoint(worldPos))
+                    return chunk.GetVoxelTypeAt(worldPos);
+            }
+            return VoxelType.Air;
+        }
+
+        public float ModifyTerrain(Vector3 pos, float radius, float strength, VoxelType type)
+            => worldManager != null ? worldManager.ModifyTerrain(pos, radius, strength, type) : 0f;
+
+        public void AddMoveSpeed(float v)  => moveSpeed  += v;
+        public void AddJumpHeight(float v) => jumpHeight += v;
 
         // =====================================================================
         // 초기화
@@ -112,11 +143,9 @@ namespace BioBreach.Controller.Player
                 _spotLight = lightObj.AddComponent<Light>();
                 _spotLight.type = LightType.Spot;
             }
-            _spotLight.spotAngle  = lightSpotAngle;
-            _spotLight.range      = lightRange;
-            _spotLight.intensity  = lightIntensity;
-                
-                
+            _spotLight.spotAngle = lightSpotAngle;
+            _spotLight.range     = lightRange;
+            _spotLight.intensity = lightIntensity;
 
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible   = false;
@@ -128,7 +157,6 @@ namespace BioBreach.Controller.Player
 
         void Update()
         {
-            // UI가 열려있으면 플레이어 입력 전부 차단
             if (UIBlocked)
             {
                 _preview.Hide();
@@ -138,9 +166,10 @@ namespace BioBreach.Controller.Player
             HandleMouseLook();
             HandleMovement();
             HandleSlotSelection();
-            CacheRaycast();              // Raycast 1회
-            UpdatePlacementPreview();    // 미리보기 (Placeable)
-            HandleAction();              // 파기 / 설치 / 사용
+            CacheRaycast();
+            CacheInput();
+            UpdatePlacementPreview();
+            HandleAction();
             HandleCursorLock();
             UpdateSpotLight();
         }
@@ -162,16 +191,12 @@ namespace BioBreach.Controller.Player
         }
 
         // =====================================================================
-        // 스팟라이트 (카메라보다 느리게 보간)
+        // 스팟라이트
         // =====================================================================
 
         void UpdateSpotLight()
         {
             if (_spotLight == null || _camera == null) return;
-
-            // _spotLight.spotAngle  = lightSpotAngle;
-            // _spotLight.range      = lightRange;
-            // _spotLight.intensity  = lightIntensity;
             _spotLight.transform.SetPositionAndRotation(
                 _camera.transform.position,
                 Quaternion.Slerp(
@@ -193,7 +218,6 @@ namespace BioBreach.Controller.Player
 
             _controller.Move((transform.right * h + transform.forward * v) * moveSpeed * Time.deltaTime);
 
-            // 수직 이동 먼저 적용 후 접지 체크
             _velocity.y += Physics.gravity.y * gravityMultiplier * Time.deltaTime;
             _velocity.y  = Mathf.Max(_velocity.y, -50f);
             _controller.Move(_velocity * Time.deltaTime);
@@ -203,7 +227,6 @@ namespace BioBreach.Controller.Player
             if (_isGrounded)
             {
                 if (_velocity.y < 0f) _velocity.y = -2f;
-
                 if (Input.GetKeyDown(KeyCode.Space))
                     _velocity.y = Mathf.Sqrt(jumpHeight * 2f * Mathf.Abs(Physics.gravity.y));
             }
@@ -213,7 +236,7 @@ namespace BioBreach.Controller.Player
         {
             if (_controller.isGrounded) { _isGrounded = true; return; }
 
-            float   radius      = _controller.radius * 0.9f;
+            float   radius       = _controller.radius * 0.9f;
             Vector3 sphereOrigin = transform.position + _controller.center
                                    + Vector3.down * (_controller.height * 0.5f - _controller.radius);
             float checkDist = _controller.skinWidth + 0.05f;
@@ -240,7 +263,7 @@ namespace BioBreach.Controller.Player
         }
 
         // =====================================================================
-        // Raycast 캐시 (매 프레임 1회)
+        // 캐시 (매 프레임 1회)
         // =====================================================================
 
         void CacheRaycast()
@@ -253,15 +276,22 @@ namespace BioBreach.Controller.Player
                 _cachedHitValid = true;
         }
 
+        void CacheInput()
+        {
+            _primaryDown   = Input.GetMouseButtonDown(0);
+            _primaryHeld   = Input.GetMouseButton(0);
+            _secondaryDown = Input.GetMouseButtonDown(1);
+            _secondaryHeld = Input.GetMouseButton(1);
+        }
+
         // =====================================================================
-        // 설치 미리보기 업데이트
+        // 설치 미리보기
         // =====================================================================
 
         void UpdatePlacementPreview()
         {
             var selected = _inventory.SelectedItem;
 
-            // Placeable 아이템이 아니면 미리보기 숨김
             if (selected == null || selected.data.category != ItemCategory.Placeable
                 || selected.data.placeablePrefab == null)
             {
@@ -270,7 +300,6 @@ namespace BioBreach.Controller.Player
                 return;
             }
 
-            // 프리팹이 바뀌었으면 고스트 재생성
             var prefab = selected.data.previewPrefab != null
                 ? selected.data.previewPrefab
                 : selected.data.placeablePrefab;
@@ -281,27 +310,16 @@ namespace BioBreach.Controller.Player
                 _lastPreviewPrefab = prefab;
             }
 
-            if (!_cachedHitValid)
-            {
-                _preview.Hide();
-                return;
-            }
+            if (!_cachedHitValid) { _preview.Hide(); return; }
 
             Vector3    pos      = _cachedHit.point + _cachedHit.normal * placeNormalOffset;
             Quaternion rot      = Quaternion.FromToRotation(Vector3.up, _cachedHit.normal);
-            bool       canPlace = CanPlaceAt(pos);
 
-            _preview.UpdatePose(pos, rot, canPlace);
-        }
-
-        /// <summary>배치 위치가 플레이어와 겹치지 않는지 간단 체크</summary>
-        bool CanPlaceAt(Vector3 pos)
-        {
-            return Vector3.Distance(pos, transform.position) > _controller.radius + 0.5f;
+            _preview.UpdatePose(pos, rot, CanPlaceAt(pos));
         }
 
         // =====================================================================
-        // 액션 처리 (아이템에 위임)
+        // 액션 처리 — 선택 변경 시 BindToPlayer, 이후 Action1/Action2 호출
         // =====================================================================
 
         void HandleAction()
@@ -310,46 +328,18 @@ namespace BioBreach.Controller.Player
             if (Cursor.lockState != CursorLockMode.Locked) return;
             if (Time.time - _lastActionTime < actionCooldown) return;
 
-            var selected = _inventory.SelectedItem;
-            if (selected == null) return;
+            var item = _inventory.SelectedItem;
+            if (item == null) { _lastBoundItem = null; return; }
 
-            var ctx = new ItemActionContext
+            // 선택 아이템이 바뀌었을 때만 재바인딩 (람다 재생성 최소화)
+            if (item != _lastBoundItem)
             {
-                Inventory         = _inventory,
-                PlaceNormalOffset = placeNormalOffset,
-                GetVoxelTypeAt    = GetVoxelTypeAtPoint,
-                ModifyTerrain     = worldManager.ModifyTerrain,
-                CanPlaceAt        = CanPlaceAt,
-                AddMoveSpeed      = v => moveSpeed  += v,
-                AddJumpHeight     = v => jumpHeight += v,
-                AttackOrigin      = _camera.transform.position,
-                AttackDirection   = _camera.transform.forward,
-                HasHit            = _cachedHitValid,
-                Hit               = _cachedHit,
-                Item              = selected,
-                PrimaryDown       = Input.GetMouseButtonDown(0),
-                PrimaryHeld       = Input.GetMouseButton(0),
-                SecondaryDown     = Input.GetMouseButtonDown(1),
-                SecondaryHeld     = Input.GetMouseButton(1),
-            };
-
-            bool acted = selected.data.OnAction1(ctx) | selected.data.OnAction2(ctx);
-            if (acted) _lastActionTime = Time.time;
-        }
-
-        // =====================================================================
-        // 헬퍼
-        // =====================================================================
-
-        VoxelType GetVoxelTypeAtPoint(Vector3 worldPoint)
-        {
-            foreach (var kvp in worldManager.ActiveChunks)
-            {
-                var chunk = kvp.Value;
-                if (chunk.ContainsPoint(worldPoint))
-                    return chunk.GetVoxelTypeAt(worldPoint);
+                item.data.BindToPlayer(item, this);
+                _lastBoundItem = item;
             }
-            return VoxelType.Air;
+
+            bool acted = item.Action1() | item.Action2();
+            if (acted) _lastActionTime = Time.time;
         }
 
         // =====================================================================
@@ -379,13 +369,11 @@ namespace BioBreach.Controller.Player
             if (!showDebugUI) return;
             if (_inventory == null) return;
 
-            // 십자선
             int cx = Screen.width / 2, cy = Screen.height / 2;
             GUI.color = Color.white;
             GUI.DrawTexture(new Rect(cx - 20, cy - 1, 40, 2), Texture2D.whiteTexture);
             GUI.DrawTexture(new Rect(cx - 1, cy - 20, 2, 40), Texture2D.whiteTexture);
 
-            // 선택 아이템 정보
             var sel = _inventory.SelectedItem;
             if (sel != null)
             {
@@ -394,27 +382,29 @@ namespace BioBreach.Controller.Player
                 GUI.Label(new Rect(cx + 30, cy + 10, 250, 25), $"수량: {sel.count}");
             }
 
-            // 핫바
             GUI.color = Color.white;
             GUI.Label(new Rect(10, 10, 200, 20), "=== 핫바 ===");
             for (int i = 0; i < _inventory.hotbarSize; i++)
             {
-                var item = _inventory.Hotbar[i];
+                var item   = _inventory.Hotbar[i];
                 bool isSel = i == _inventory.SelectedSlotIndex;
-                if (isSel) { GUI.color = Color.yellow; GUI.DrawTexture(new Rect(8, 32 + i * 24 - 2, 180, 22), Texture2D.whiteTexture); }
+                if (isSel)
+                {
+                    GUI.color = Color.yellow;
+                    GUI.DrawTexture(new Rect(8, 32 + i * 24 - 2, 180, 22), Texture2D.whiteTexture);
+                }
                 GUI.color = isSel ? Color.black : Color.white;
                 string label = item != null ? $"[{i+1}] {item.data.itemName} x{item.count}" : $"[{i+1}] -";
                 GUI.Label(new Rect(12, 32 + i * 24, 160, 20), label);
                 GUI.color = Color.white;
             }
 
-            // 조작법
             GUI.color = Color.white;
             int y = Screen.height - 120;
             GUI.Label(new Rect(10, y,      300, 20), "WASD: 이동 | Space: 점프 | ESC: 커서");
             GUI.Label(new Rect(10, y + 20, 300, 20), "좌클릭: 파기/설치  우클릭: 설치/사용");
             GUI.Label(new Rect(10, y + 40, 300, 20), "1~5: 핫바 선택 | 휠: 변경");
-            GUI.Label(new Rect(10, y + 60, 300, 20), "I: 인벤토리 (UI 연결 필요)");
+            GUI.Label(new Rect(10, y + 60, 300, 20), "I: 인벤토리");
         }
     }
 }
