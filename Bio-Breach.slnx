@@ -1,0 +1,9 @@
+﻿<Solution>
+  <Project Path="BioBreach.Engine.csproj" />
+  <Project Path="BioBreach.Core.csproj" />
+  <Project Path="Assembly-CSharp-Editor.csproj" />
+  <Project Path="BioBreach.UI.csproj" />
+  <Project Path="BioBreach.Controllers.csproj" />
+  <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="BioBreach.Systems.csproj" />
+</Solution>

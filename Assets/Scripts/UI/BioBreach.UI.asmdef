@@ -1,0 +1,18 @@
+{
+    "name": "BioBreach.UI",
+    "rootNamespace": "",
+    "references": [
+        "GUID:d850dfce471db224c8ba24f7814d24ba",
+        "GUID:47e97cce23e3eef4bac06359881b5798",
+        "GUID:42825f9d40d603146b1a2d8369089fd7"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,17 @@
+{
+    "name": "BioBreach.Engine",
+    "rootNamespace": "",
+    "references": [
+        "GUID:d850dfce471db224c8ba24f7814d24ba",
+        "GUID:6055be8ebefd69e48b49212b09b47b2f"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
