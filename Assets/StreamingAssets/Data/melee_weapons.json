@@ -1,0 +1,26 @@
+[
+  {
+    "id": "t_cell_blade",
+    "type": "MeleeWeapon",
+    "itemName": "T세포 검",
+    "description": "T세포 막에서 추출한 예리한 검. 빠르고 가볍습니다.",
+    "gridWidth": 1,
+    "gridHeight": 3,
+    "maxStack": 1,
+    "meleeAttackDamage": 20.0,
+    "meleeAttackReach": 2.5,
+    "meleeAttackRadius": 1.0
+  },
+  {
+    "id": "macrophage_hammer",
+    "type": "MeleeWeapon",
+    "itemName": "대식세포 해머",
+    "description": "대식세포 외골격으로 만든 둔기. 느리지만 광역 피해를 줍니다.",
+    "gridWidth": 2,
+    "gridHeight": 3,
+    "maxStack": 1,
+    "meleeAttackDamage": 50.0,
+    "meleeAttackReach": 4.0,
+    "meleeAttackRadius": 2.5
+  }
+]

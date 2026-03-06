@@ -1,12 +1,21 @@
 // =============================================================================
 // PlayerInventory.cs - 그리드 기반 플레이어 인벤토리
 // =============================================================================
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using BioBreach.Engine.Item;
+using BioBreach.Engine.Data;
 
 namespace BioBreach.Engine.Inventory
 {
+    [Serializable]
+    public class StartItemEntry
+    {
+        public string id;
+        [Min(1)] public int count = 1;
+    }
+
     /// <summary>
     /// 플레이어 인벤토리 (디아블로2식 그리드)
     /// - 그리드 데이터: InventoryGrid
@@ -17,7 +26,7 @@ namespace BioBreach.Engine.Inventory
         // =====================================================================
         // Inspector 설정
         // =====================================================================
-        
+
         [Header("그리드 크기")]
         public int gridColumns = 10;
         public int gridRows    = 6;
@@ -25,8 +34,8 @@ namespace BioBreach.Engine.Inventory
         [Header("핫바 슬롯 수")]
         public int hotbarSize = 5;
 
-        [Header("초기 아이템 (테스트용)")]
-        public List<ItemDataSO> startItems = new List<ItemDataSO>();
+        [Header("초기 아이템 (JSON id 기반)")]
+        public List<StartItemEntry> startItems = new List<StartItemEntry>();
 
         // =====================================================================
         // 데이터
@@ -59,10 +68,14 @@ namespace BioBreach.Engine.Inventory
 
         void Start()
         {
-            foreach (var data in startItems)
+            GameDataLoader.EnsureLoaded();
+
+            foreach (var entry in startItems)
             {
-                if (data != null)
-                    TryAddItem(data, data.maxStack);
+                if (string.IsNullOrEmpty(entry.id)) continue;
+                var so = GameDataLoader.CreateItemSO(entry.id);
+                if (so != null)
+                    TryAddItem(so, entry.count);
             }
         }
 
@@ -73,7 +86,7 @@ namespace BioBreach.Engine.Inventory
         /// <summary>
         /// 아이템을 그리드에 자동 배치 (성공 여부 반환)
         /// </summary>
-        public bool TryAddItem(ItemDataSO data, int count = 1)
+        public bool TryAddItem(Item.ItemBase data, int count = 1)
         {
             return _grid.TryAddAuto(data, count);
         }
@@ -95,7 +108,7 @@ namespace BioBreach.Engine.Inventory
         /// <summary>
         /// ItemData 기준으로 1개 제거 (편의용)
         /// </summary>
-        public bool TryConsumeOne(ItemDataSO data)
+        public bool TryConsumeOne(Item.ItemBase data)
         {
             foreach (var item in _grid.Items)
             {
@@ -105,8 +118,34 @@ namespace BioBreach.Engine.Inventory
             return false;
         }
 
-        public bool Has(ItemDataSO data, int amount = 1) => _grid.Has(data, amount);
-        public int CountOf(ItemDataSO data)              => _grid.CountOf(data);
+        public bool Has(Item.ItemBase data, int amount = 1) => _grid.Has(data, amount);
+        public int CountOf(Item.ItemBase data)              => _grid.CountOf(data);
+
+        /// <summary>itemId(dataId)로 인벤토리 전체 수량 조회 (조합 재료 확인용)</summary>
+        public int GetTotalCount(string itemId)
+        {
+            int total = 0;
+            foreach (var inst in _grid.Items)
+                if (inst.data.dataId == itemId) total += inst.count;
+            return total;
+        }
+
+        /// <summary>itemId로 지정 수량만큼 제거. 여러 스택에 걸쳐 제거한다.</summary>
+        public void RemoveItems(string itemId, int amount)
+        {
+            int remaining = amount;
+            foreach (var inst in new List<ItemInstance>(_grid.Items))
+            {
+                if (remaining <= 0) break;
+                if (inst.data.dataId != itemId) continue;
+                int remove = Mathf.Min(remaining, inst.count);
+                TryRemoveItem(inst, remove);
+                remaining -= remove;
+            }
+        }
+
+        /// <summary>ItemBase + 수량으로 추가 (CraftingRepository에서 결과 아이템 지급용)</summary>
+        public bool AddItem(Item.ItemBase data, int count = 1) => TryAddItem(data, count);
 
         // =====================================================================
         // 핫바 관리

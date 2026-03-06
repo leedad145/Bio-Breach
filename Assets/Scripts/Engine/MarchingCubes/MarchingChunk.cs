@@ -48,24 +48,24 @@ namespace BioBreach.Engine.MarchingCubes
         // =====================================================================
         // 복셀 타입 확률 임계값 (0~1, 높을수록 희귀)
         // =====================================================================
-        private float _ironThreshold     = 0.5f;
-        private float _calciumThreshold  = 0.66f;
-        private float _essenceThreshold  = 0.85f;
+        /*
+            조건 (Value > X),등장 확률 (대략),희귀도 및 느낌
+            > 0.50,약 50%,"맵의 절반이 이 물질임. (흙, 돌)"
+            > 0.55,약 30%,매우 흔함. 어디서나 보임.
+            > 0.60,약 15%,흔함. 일반적인 광물 수준.
+            > 0.65,약 7%,조금 희귀함. 찾으러 다녀야 함.
+            > 0.70,약 2.5%,매우 희귀함. (이때부터 레어템)
+            > 0.75,약 0.8%,전설급. 정말 가끔 뭉쳐있음.
+            > 0.80,0.1% 미만,거의 생성되지 않음.
+        */
+        private float _airThreshold     = 0.6f;
+        private float _ironThreshold     = 0.62f;
+        private float _calciumThreshold  = 0.68f;
+        private float _essenceThreshold  = 0.77f;
 
         // =====================================================================
         // 청크 생성
         // =====================================================================
-
-        /// <summary>MapGenerator 등 외부에서 동적으로 설정을 주입할 때 사용 (CreateChunk 전에 호출)</summary>
-        public void Configure(float hemisphereDiameter, Vector3 hemisphereCenter,
-            float ironThreshold, float calciumThreshold, float essenceThreshold)
-        {
-            _hemisphereDiameter = hemisphereDiameter;
-            _hemisphereCenter   = hemisphereCenter;
-            _ironThreshold      = ironThreshold;
-            _calciumThreshold   = calciumThreshold;
-            _essenceThreshold   = essenceThreshold;
-        }
 
         public void CreateChunk(int sizeX, int sizeY, int sizeZ, float voxelSize, Vector3 seed)
         {
@@ -102,45 +102,72 @@ namespace BioBreach.Engine.MarchingCubes
                 Vector3 worldPos  = new Vector3(x, y, z) * _voxelSize + _chunkOffset;
                 Vector3 seededPos = worldPos + _seed;
 
-                // 반구 SDF: 평면(y <= center.y) 아래는 항상 고체
-                // 위 반구 내부(dist < radius) = 공기(양수), 외부 = 고체(음수)
-                float density;
-                if (worldPos.y <= _hemisphereCenter.y)
-                    density = MIN_DENSITY;
+                VoxelType type = DetermineVoxelType(seededPos);
+                _voxelTypes[index] = type;
+                if(_voxelTypes[index] == VoxelType.Air)
+                {
+                    _density[index] = MIN_DENSITY;
+                }
                 else
-                    density = radius - Vector3.Distance(worldPos, _hemisphereCenter);
+                {
+                    float density;
 
-                _density[index]    = Mathf.Clamp(density, MIN_DENSITY, MAX_DENSITY);
-                _voxelTypes[index] = DetermineVoxelType(seededPos);
+                    if (worldPos.y <= _hemisphereCenter.y)
+                    {
+                        density = MIN_DENSITY;
+                    }
+                    else
+                    {
+                        float dist = Vector3.Distance(worldPos, _hemisphereCenter);
+
+                        // 반구 내부
+                        if (dist < radius && type == VoxelType.Protein)
+                        {
+                            density = MAX_DENSITY; // 공기
+                        }
+                        else
+                        {
+                            density = MIN_DENSITY; // 고체
+                        }
+                    }
+
+                    _density[index] = Mathf.Clamp(density, MIN_DENSITY, MAX_DENSITY);
+                }
             }
         }
 
         /// <summary>
         /// 생체 조직 복셀 타입 결정 — 깊이 구분 없이 균일 노이즈 분포.
+        /// 중간의 가중치는 한번에 나오는 덩어리의 크기
         /// 임계값은 인스펙터에서 조작 가능 (높을수록 희귀).
         /// 우선순위: GeneticEssence > Calcium > Iron > Protein
         /// </summary>
         private VoxelType DetermineVoxelType(Vector3 seededPos)
         {
+            float airNoise = Perlin3D(
+                seededPos.x * 0.04f + 100f,
+                seededPos.y * 0.04f + 100f,
+                seededPos.z * 0.04f + 100f
+            );
             float ironNoise = Perlin3D(
-                seededPos.x * 0.08f + 100f,
-                seededPos.y * 0.08f + 100f,
-                seededPos.z * 0.08f + 100f
+                seededPos.x * 0.2f + 200f,
+                seededPos.y * 0.2f + 200f,
+                seededPos.z * 0.2f + 200f
             );
             float calciumNoise = Perlin3D(
-                seededPos.x * 0.06f + 200f,
-                seededPos.y * 0.06f + 200f,
-                seededPos.z * 0.06f + 200f
+                seededPos.x * 0.08f + 300f,
+                seededPos.y * 0.08f + 300f,
+                seededPos.z * 0.08f + 300f
             );
             float essenceNoise = Perlin3D(
-                seededPos.x * 0.1f  + 300f,
-                seededPos.y * 0.1f  + 300f,
-                seededPos.z * 0.1f  + 300f
+                seededPos.x * 0.5f  + 400f,
+                seededPos.y * 0.5f  + 400f,
+                seededPos.z * 0.5f  + 400f
             );
-
             if (essenceNoise > _essenceThreshold) return VoxelType.GeneticEssence;
             if (calciumNoise > _calciumThreshold) return VoxelType.Calcium;
             if (ironNoise    > _ironThreshold)    return VoxelType.Iron;
+            if (airNoise > _airThreshold) return VoxelType.Air;
             return VoxelType.Protein;
         }
 
@@ -312,6 +339,7 @@ namespace BioBreach.Engine.MarchingCubes
             for (int s = 0; s < activeTypes.Count; s++)
                 _mesh.SetTriangles(trisByType[activeTypes[s]], s);
             _mesh.RecalculateNormals();
+            _mesh.RecalculateBounds(); // 추가 광원(Spotlight 등) 컬링을 위해 반드시 필요
 
             GetComponent<MeshFilter>().sharedMesh = _mesh;
             meshRenderer.sharedMaterials = matList.ToArray();

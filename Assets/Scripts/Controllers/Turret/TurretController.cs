@@ -3,10 +3,13 @@
 // 이동 없음. 탐지 범위 내 Enemy 중 우선순위에 따라 타겟 선정 후 공격.
 // =============================================================================
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using VContainer;
 using BioBreach.Engine.Entity;
+using BioBreach.Engine.Data;
 
 namespace BioBreach.Controller.Turret
 {
@@ -25,30 +28,58 @@ namespace BioBreach.Controller.Turret
         // Inspector 설정
         // =====================================================================
 
-        [Header("탐지 & 공격")]
-        [Tooltip("적을 탐지하는 반경")]
-        public float detectionRange = 20f;
-        [Tooltip("공격이 발동되는 반경 (≤ detectionRange)")]
-        public float attackRange    = 18f;
+        [Header("JSON 데이터")]
+        [Tooltip("turrets.json 의 id. 반드시 입력해야 스탯이 적용된다.")]
+        public string dataId;
+
+        [Header("참조")]
         [Tooltip("Enemy가 있는 레이어")]
         public LayerMask enemyLayer;
-
-        [Header("공격")]
-        public float attackDamage   = 15f;
-        public float attackCooldown = 0.8f;
-
-        [Header("타겟 우선순위")]
-        public TargetPriority targetPriority = TargetPriority.Nearest;
-
-        [Header("포신 (선택)")]
         [Tooltip("타겟 방향으로 회전할 Transform. null이면 오브젝트 루트가 회전.")]
         public Transform barrel;
+
+        // ── 스탯 (JSON에서 로드, Inspector 비공개) ──────────────────────────────
+        [HideInInspector] public float          detectionRange = 20f;
+        [HideInInspector] public float          attackRange    = 18f;
+        [HideInInspector] public float          attackDamage   = 15f;
+        [HideInInspector] public float          attackCooldown = 0.8f;
+        [HideInInspector] public TargetPriority targetPriority = TargetPriority.Nearest;
 
         // =====================================================================
         // 내부 변수
         // =====================================================================
 
-        float _lastAttackTime;
+        float            _lastAttackTime;
+        TurretRepository _turretRepo;
+
+        [Inject]
+        public void Construct(TurretRepository turretRepo) => _turretRepo = turretRepo;
+
+        // =====================================================================
+        // 초기화
+        // =====================================================================
+
+        protected override void Start()
+        {
+            // OnNetworkSpawn 이전에 maxHp를 설정해야 NetworkVariable 초기값에 반영됨
+            if (!string.IsNullOrEmpty(dataId) && _turretRepo != null)
+            {
+                if (_turretRepo.TryGet(dataId, out var d))
+                {
+                    maxHp          = d.maxHp;
+                    detectionRange = d.detectionRange;
+                    attackRange    = d.attackRange;
+                    attackDamage   = d.attackDamage;
+                    attackCooldown = d.attackCooldown;
+                    targetPriority = Enum.Parse<TargetPriority>(d.targetPriority, ignoreCase: true);
+                }
+            }
+        }
+
+        public override void OnNetworkSpawn()
+        {
+            base.OnNetworkSpawn(); // EntityMonoBehaviour HP 초기화
+        }
 
         // =====================================================================
         // 업데이트
@@ -56,7 +87,8 @@ namespace BioBreach.Controller.Turret
 
         void Update()
         {
-            if (!IsAlive) return;
+            // 공격 로직은 Server에서만 실행 (Server-authoritative)
+            if (!IsServer || !IsAlive) return;
 
             var target = SelectTarget();
             if (target == null) return;

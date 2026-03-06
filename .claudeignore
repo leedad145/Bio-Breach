@@ -1,0 +1,74 @@
+# =========================
+# Unity Generated Folders
+# =========================
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+MemoryCaptures/
+UserSettings/
+
+# =========================
+# Version Control
+# =========================
+.git/
+.gitignore
+.gitattributes
+
+# =========================
+# Unity Cache / IDE
+# =========================
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+
+# =========================
+# Build Artifacts
+# =========================
+*.apk
+*.aab
+*.ipa
+*.exe
+*.app
+*.unitypackage
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Large Assets (optional)
+# =========================
+*.psd
+*.blend
+*.fbx
+*.wav
+*.mp4
+*.mov
+
+# =========================
+# Addressables / Bundles
+# =========================
+ServerData/
+AssetBundles/
+
+# =========================
+# Unity Cache Server
+# =========================
+CacheServer/
+
+# =========================
+# Node / Tooling (if exists)
+# =========================
+node_modules/
+dist/

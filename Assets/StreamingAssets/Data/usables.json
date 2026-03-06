@@ -1,0 +1,26 @@
+[
+  {
+    "id": "heal_serum",
+    "type": "Usable",
+    "itemName": "회복 혈청",
+    "description": "체력을 30 회복합니다.",
+    "gridWidth": 1,
+    "gridHeight": 2,
+    "maxStack": 10,
+    "effect": "Heal",
+    "effectValue": 30.0,
+    "effectDuration": 0.0
+  },
+  {
+    "id": "adrenaline_shot",
+    "type": "Usable",
+    "itemName": "아드레날린 주사",
+    "description": "10초간 이동 속도를 3 증가시킵니다.",
+    "gridWidth": 1,
+    "gridHeight": 2,
+    "maxStack": 5,
+    "effect": "SpeedBoost",
+    "effectValue": 3.0,
+    "effectDuration": 10.0
+  }
+]

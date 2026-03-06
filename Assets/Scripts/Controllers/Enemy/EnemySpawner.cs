@@ -5,6 +5,9 @@
 // =============================================================================
 
 using UnityEngine;
+using Unity.Netcode;
+using VContainer;
+using VContainer.Unity;
 using BioBreach.Systems;
 using BioBreach.Core.Voxel;
 using BioBreach.Controller.Enemy;
@@ -19,7 +22,7 @@ namespace BioBreach.Controller.Enemy
     ///   <item>소환 위치 주변 Voxel 제거 (범위·강도 설정 가능)</item>
     /// </list>
     /// </summary>
-    public class EnemySpawner : MonoBehaviour
+    public class EnemySpawner : NetworkBehaviour
     {
         // =====================================================================
         // Inspector 설정
@@ -57,15 +60,21 @@ namespace BioBreach.Controller.Enemy
         // 내부 변수
         // =====================================================================
 
-        int   _spawnCount;
-        float _timer;
+        int              _spawnCount;
+        float            _timer;
+        IObjectResolver  _resolver;
+
+        [Inject]
+        public void Construct(IObjectResolver resolver) => _resolver = resolver;
 
         // =====================================================================
         // 초기화
         // =====================================================================
 
-        void Start()
+        public override void OnNetworkSpawn()
         {
+            if (!IsServer) return;
+
             if (worldManager == null)
                 worldManager = FindAnyObjectByType<WorldManager>();
 
@@ -79,6 +88,9 @@ namespace BioBreach.Controller.Enemy
 
         void Update()
         {
+            // 소환은 Server에서만 실행
+            if (!IsServer) return;
+
             _timer += Time.deltaTime;
             if (_timer >= spawnInterval)
             {
@@ -99,10 +111,11 @@ namespace BioBreach.Controller.Enemy
             if (worldManager != null && spawnClearRadius > 0f)
                 worldManager.ModifyTerrain(transform.position, spawnClearRadius, spawnClearStrength, VoxelType.Air);
 
-            // 2. Enemy 생성
+            // 2. Enemy 생성 (Server) + VContainer 의존성 주입
             var go = Instantiate(enemyPrefab, transform.position, transform.rotation);
+            _resolver?.InjectGameObject(go);
 
-            // 3. 스케일링 주입 (Start 이전에 주입해야 maxHp 반영됨)
+            // 3. 스케일링 주입 — NetworkSpawn 이전(Start 이전)에 반영되어야 maxHp에 적용됨
             var enemy = go.GetComponent<EnemyController>();
             if (enemy != null)
             {
@@ -116,6 +129,12 @@ namespace BioBreach.Controller.Enemy
                 if (matriarchTarget != null) enemy.matriarchTarget = matriarchTarget;
                 if (worldManager    != null) enemy.worldManager    = worldManager;
             }
+
+            // 4. 네트워크에 스폰 — 모든 클라이언트에 오브젝트 생성
+            if (go.TryGetComponent<NetworkObject>(out var netObj))
+                netObj.Spawn(destroyWithScene: true);
+            else
+                Debug.LogWarning($"[EnemySpawner] {enemyPrefab.name}에 NetworkObject 컴포넌트가 없습니다.");
 
             _spawnCount++;
         }

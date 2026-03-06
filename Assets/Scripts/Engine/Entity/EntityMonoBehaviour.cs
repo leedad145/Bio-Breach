@@ -1,33 +1,25 @@
 // =============================================================================
-// EntityMonoBehaviour.cs - EntityBase를 Unity MonoBehaviour와 연결하는 브리지
-// Engine 레이어 — UnityEngine 의존
+// EntityMonoBehaviour.cs - 모든 게임 엔티티의 네트워크 기반 클래스
+// =============================================================================
+// HP는 NetworkVariable<float>로 Server→Client 자동 동기화.
+// TakeDamage/Heal: 서버 권위형 — Client에서 호출 시 ServerRpc 경유.
+// HandleDeath: Server에서 NetworkObject.Despawn(), 모든 클라이언트에서 이벤트 발생.
 // =============================================================================
 
 using System;
 using UnityEngine;
-using BioBreach.Core.Entity;
+using Unity.Netcode;
 
 namespace BioBreach.Engine.Entity
 {
-    /// <summary>
-    /// 타겟 선택 우선순위.
-    /// EnemyController(방어 유닛 타겟)·TurretController(적 타겟) 공용.
-    /// </summary>
     public enum TargetPriority
     {
-        Nearest,        // 가장 가까운 대상
-        LowestHp,       // HP가 가장 낮은 대상
-        HighestPriority // priorityScore가 가장 높은 대상
+        Nearest,
+        LowestHp,
+        HighestPriority
     }
 
-    /// <summary>
-    /// EntityBase의 HP/사망 시스템을 Unity MonoBehaviour로 래핑한 추상 기반 클래스.
-    /// Enemy, Matriarch, Turret 등 모든 게임 엔티티 컴포넌트의 공통 기반.
-    ///
-    /// ※ 초기화는 Start()에서 이루어지므로 Instantiate 직후~Start 호출 전 사이에
-    ///   maxHp 등 스탯 필드를 변경하면 반영됩니다 (EnemySpawner의 스케일링에 활용).
-    /// </summary>
-    public abstract class EntityMonoBehaviour : MonoBehaviour
+    public abstract class EntityMonoBehaviour : NetworkBehaviour
     {
         [Header("엔티티 기본 스탯")]
         [SerializeField] string entityDisplayName = "Entity";
@@ -37,34 +29,105 @@ namespace BioBreach.Engine.Entity
         [Tooltip("높을수록 적에게 우선 공격 받음 (HighestPriority 모드에서 사용)")]
         public int priorityScore = 0;
 
-        RuntimeEntity _entity;
+        // =====================================================================
+        // 네트워크 HP — Server 쓰기 전용, 모든 클라이언트 읽기 가능
+        // =====================================================================
 
-        public string EntityName => _entity.DisplayName;
-        public float  CurrentHp  => _entity.CurrentHp;
-        public float  MaxHp      => _entity.MaxHp;
-        public bool   IsAlive    => _entity.IsAlive;
+        private readonly NetworkVariable<float> _netCurrentHp = new(
+            0f,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server
+        );
 
-        /// <summary>HP가 0이 될 때 발생 (HandleDeath 호출 전)</summary>
+        public string EntityName => entityDisplayName;
+        public float  CurrentHp  => _netCurrentHp.Value;
+        public float  MaxHp      => maxHp;
+        public bool   IsAlive    => _netCurrentHp.Value > 0f;
+
+        /// <summary>HP가 0이 될 때 모든 클라이언트에서 발생</summary>
         public event Action OnDeathEvent;
 
-        /// <summary>
-        /// Start에서 엔티티를 초기화합니다.
-        /// 서브클래스에서 override할 때는 maxHp 조정 후 base.Start()를 호출하세요.
-        /// </summary>
-        protected virtual void Start()
+        // =====================================================================
+        // NGO 생명주기
+        // =====================================================================
+
+        public override void OnNetworkSpawn()
         {
-            _entity = new RuntimeEntity(entityDisplayName, maxHp);
-            _entity.OnDeath += () =>
+            if (IsServer)
+                _netCurrentHp.Value = maxHp;
+
+            _netCurrentHp.OnValueChanged += OnHpChanged;
+        }
+
+        public override void OnNetworkDespawn()
+        {
+            _netCurrentHp.OnValueChanged -= OnHpChanged;
+        }
+
+        private void OnHpChanged(float prev, float next)
+        {
+            if (prev > 0f && next <= 0f)
             {
                 OnDeathEvent?.Invoke();
                 HandleDeath();
-            };
+            }
         }
 
-        public virtual void TakeDamage(float amount) => _entity.TakeDamage(amount);
-        public virtual void Heal(float amount)        => _entity.Heal(amount);
+        // =====================================================================
+        // 공개 메서드
+        // =====================================================================
 
-        /// <summary>사망 처리. 기본 동작은 GameObject 파괴.</summary>
-        protected virtual void HandleDeath() => Destroy(gameObject);
+        /// <summary>데미지 적용. Client에서 호출 시 ServerRpc로 전달.</summary>
+        public virtual void TakeDamage(float amount)
+        {
+            if (IsServer)
+                ServerApplyDamage(amount);
+            else
+                TakeDamageServerRpc(amount);
+        }
+
+        public virtual void Heal(float amount)
+        {
+            if (IsServer)
+                _netCurrentHp.Value = Mathf.Min(maxHp, _netCurrentHp.Value + amount);
+            else
+                HealServerRpc(amount);
+        }
+
+        // =====================================================================
+        // ServerRpc
+        // =====================================================================
+
+        [ServerRpc(RequireOwnership = false)]
+        private void TakeDamageServerRpc(float amount) => ServerApplyDamage(amount);
+
+        [ServerRpc(RequireOwnership = false)]
+        private void HealServerRpc(float amount)
+        {
+            _netCurrentHp.Value = Mathf.Min(maxHp, _netCurrentHp.Value + amount);
+        }
+
+        private void ServerApplyDamage(float amount)
+        {
+            if (!IsAlive) return;
+            _netCurrentHp.Value = Mathf.Max(0f, _netCurrentHp.Value - amount);
+        }
+
+        // =====================================================================
+        // 사망 처리
+        // =====================================================================
+
+        /// <summary>
+        /// HP가 0이 될 때 모든 클라이언트에서 호출.
+        /// 기본: Server에서 Despawn.
+        /// </summary>
+        protected virtual void HandleDeath()
+        {
+            if (IsServer)
+                NetworkObject.Despawn();
+        }
+
+        // 서브클래스가 Start()에서 초기화 로직을 유지할 수 있도록 보존
+        protected virtual void Start() { }
     }
 }

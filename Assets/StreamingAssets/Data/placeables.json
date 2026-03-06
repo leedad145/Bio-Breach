@@ -1,0 +1,22 @@
+[
+  {
+    "id": "antibody_mine",
+    "type": "Placeable",
+    "itemName": "항체 지뢰",
+    "description": "지형에 설치하면 근접한 적에게 폭발 피해를 줍니다.",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "maxStack": 5,
+    "placeDistance": 8.0
+  },
+  {
+    "id": "cytokine_turret_kit",
+    "type": "Placeable",
+    "itemName": "사이토카인 포탑 키트",
+    "description": "조립 가능한 소형 공격 포탑. 설치 후 자동으로 적을 공격합니다.",
+    "gridWidth": 2,
+    "gridHeight": 3,
+    "maxStack": 3,
+    "placeDistance": 6.0
+  }
+]

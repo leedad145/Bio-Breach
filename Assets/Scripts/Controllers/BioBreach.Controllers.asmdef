@@ -4,7 +4,10 @@
     "references": [
         "GUID:d850dfce471db224c8ba24f7814d24ba",
         "GUID:47e97cce23e3eef4bac06359881b5798",
-        "GUID:bf1fd77b584de7a43bd89b753256d15b"
+        "GUID:bf1fd77b584de7a43bd89b753256d15b",
+        "GUID:1491147abca9d7d4bb7105af628b223e",
+        "VContainer",
+        "VContainer.Unity"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -7,10 +7,13 @@
 //  - 이동 경로 앞에 Voxel(MeshCollider) 감지 → 공격으로 제거 후 이동
 // =============================================================================
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using VContainer;
 using BioBreach.Engine.Entity;
+using BioBreach.Engine.Data;
 using BioBreach.Systems;
 using BioBreach.Core.Voxel;
 
@@ -23,36 +26,27 @@ namespace BioBreach.Controller.Enemy
         // Inspector 설정
         // =====================================================================
 
-        [Header("이동")]
-        public float moveSpeed = 5f;
+        [Header("JSON 데이터")]
+        [Tooltip("enemies.json 의 id. 반드시 입력해야 스탯이 적용된다.")]
+        public string dataId;
 
-        [Header("중력")]
-        public float gravityMultiplier = 2f;
-
-        [Header("탐지 & 공격")]
-        public float detectionRange = 15f;
-        public float attackRange    = 2f;
-        public LayerMask defenseLayer;
-
-        [Header("공격")]
-        public float attackDamage   = 10f;
-        public float attackCooldown = 1f;
-
-        [Header("타겟 우선순위")]
-        public TargetPriority targetPriority = TargetPriority.Nearest;
-
-        [Header("기본 이동 목표")]
-        public Transform matriarchTarget;
-
-        [Header("Voxel 파기 (길 막힌 경우)")]
-        [Tooltip("전방 Voxel 감지 거리 (CharacterController 반경 + 여유)")]
-        public float digDetectDist = 1.5f;
-        [Tooltip("Voxel 파기 반경")]
-        public float digRadius     = 1.5f;
-        [Tooltip("Voxel 파기 강도")]
-        public float digStrength   = 0.5f;
-        [Tooltip("WorldManager 참조 (null이면 자동 탐색)")]
+        [Header("참조")]
+        public LayerMask  defenseLayer;
+        public Transform  matriarchTarget;
         public WorldManager worldManager;
+
+        // ── 스탯 (JSON에서 로드, Inspector 비공개) ──────────────────────────────
+        [HideInInspector] public float           moveSpeed      = 5f;
+        [HideInInspector] public float           gravityMultiplier = 2f;
+        [HideInInspector] public float           detectionRange = 15f;
+        [HideInInspector] public float           attackRange    = 2f;
+        [HideInInspector] public float           attackDamage   = 10f;
+        [HideInInspector] public float           attackCooldown = 1f;
+        [HideInInspector] public TargetPriority  targetPriority = TargetPriority.Nearest;
+        [HideInInspector] public float           digRadius      = 3f;
+        [HideInInspector] public float           digStrength    = 2f;
+        [HideInInspector] public float           jumpSpeed      = 7f;
+        [HideInInspector] public float[]         jumpAngles     = { 20f, 35f, 50f };
 
         // =====================================================================
         // 스포너 스케일링 (EnemySpawner가 Start 이전에 주입)
@@ -68,8 +62,12 @@ namespace BioBreach.Controller.Enemy
 
         CharacterController _cc;
         float               _velocityY;
-        float               _lastAttackTime;
+        float               _lastActionTime;   // 공격 + 파기 공유 쿨타임
         EntityMonoBehaviour _currentTarget;
+        EnemyRepository     _enemyRepo;
+
+        [Inject]
+        public void Construct(EnemyRepository enemyRepo) => _enemyRepo = enemyRepo;
 
         // =====================================================================
         // 초기화
@@ -77,24 +75,50 @@ namespace BioBreach.Controller.Enemy
 
         protected override void Start()
         {
+            // JSON 데이터 적용 (Inspector 기본값을 덮어씀)
+            // OnNetworkSpawn 이전에 maxHp 스케일링을 반영하기 위해 Start에서 처리
+            if (!string.IsNullOrEmpty(dataId) && _enemyRepo != null)
+            {
+                if (_enemyRepo.TryGet(dataId, out var d))
+                {
+                    maxHp             = d.maxHp;
+                    moveSpeed         = d.moveSpeed;
+                    gravityMultiplier = d.gravityMultiplier;
+                    detectionRange    = d.detectionRange;
+                    attackRange       = d.attackRange;
+                    attackDamage      = d.attackDamage;
+                    attackCooldown    = d.attackCooldown;
+                    targetPriority    = Enum.Parse<TargetPriority>(d.targetPriority, ignoreCase: true);
+                    digRadius         = d.digRadius;
+                    digStrength       = d.digStrength;
+                }
+            }
+
             maxHp        *= hpMultiplier;
             attackDamage *= damageMultiplier;
             moveSpeed    *= speedMultiplier;
+        }
 
-            base.Start();
+        public override void OnNetworkSpawn()
+        {
+            base.OnNetworkSpawn(); // EntityMonoBehaviour HP 초기화
 
             _cc = GetComponent<CharacterController>();
+
+            if (!IsServer) return;
 
             if (worldManager == null)
                 worldManager = FindAnyObjectByType<WorldManager>();
 
-            // 주변 1청크 항상 로드되도록 뷰어 등록
+            // Server만 뷰어 등록 — AI 이동은 Server에서만 실행
             worldManager?.RegisterViewer(transform, 1);
         }
 
-        void OnDestroy()
+        public override void OnNetworkDespawn()
         {
-            worldManager?.UnregisterViewer(transform);
+            base.OnNetworkDespawn();
+            if (IsServer)
+                worldManager?.UnregisterViewer(transform);
         }
 
         // =====================================================================
@@ -103,7 +127,8 @@ namespace BioBreach.Controller.Enemy
 
         void Update()
         {
-            if (!IsAlive) return;
+            // AI 로직은 Server에서만 실행 (Server-authoritative)
+            if (!IsServer || !IsAlive) return;
 
             _currentTarget = SelectTarget();
 
@@ -174,35 +199,82 @@ namespace BioBreach.Controller.Enemy
             Vector3 dir = new Vector3(diff.x, 0f, diff.z).normalized;
             if (dir.sqrMagnitude < 0.001f) return;
 
-            // 전방 Voxel 감지
-            if (IsVoxelBlocking(dir, out Vector3 blockPoint))
+            if (IsVoxelBlocking(dir, out _))
             {
-                // Voxel 파기 — 매 프레임 조금씩 깎음
-                if (worldManager != null && digStrength > 0f)
-                    worldManager.ModifyTerrain(blockPoint, digRadius, digStrength, VoxelType.Air);
-                // 이번 프레임은 이동하지 않고 파기에 집중
+                // 위쪽 각도 레이가 뚫려 있으면 점프, 전부 막히면 파기
+                if (!TryJumpOver(dir))
+                    TryDigToward(diff);
             }
             else
             {
                 _cc.Move(dir * moveSpeed * Time.deltaTime);
             }
 
-            // 이동 방향으로 회전
             transform.rotation = Quaternion.LookRotation(dir);
         }
 
         /// <summary>
-        /// 이동 방향으로 Raycast 후 Voxel(MeshCollider)이 막고 있으면 true.
+        /// dir 기준으로 위쪽 각도 레이(jumpAngles)를 순서대로 쏜다.
+        /// 하나라도 뚫려 있으면 점프하고 true 반환, 전부 막히면 false.
+        /// </summary>
+        bool TryJumpOver(Vector3 dir)
+        {
+            if (!_cc.isGrounded) return false;
+
+            // dir이 수평이므로 Cross(dir, up)은 항상 수평 수직벡터 → 위로 회전하는 축
+            Vector3 rotAxis = Vector3.Cross(dir, Vector3.up);
+
+            foreach (float angle in jumpAngles)
+            {
+                Vector3 upDir = Quaternion.AngleAxis(angle, rotAxis) * dir;
+                if (!IsVoxelBlocking(upDir, out _))
+                {
+                    _velocityY = jumpSpeed;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// diff 방향으로 Voxel이 막혀 있으면 파낸다. MoveToward에서만 호출.
+        /// 수평 + 수직 두 SphereCast로 위아래 장애물도 처리한다.
+        /// </summary>
+        void TryDigToward(Vector3 diff)
+        {
+            if (worldManager == null || digStrength <= 0f) return;
+            if (Time.time - _lastActionTime < attackCooldown) return;
+
+            Vector3 hDir = new Vector3(diff.x, 0f, diff.z).normalized;
+            Vector3 vDir = new Vector3(0f, diff.y, 0f).normalized;
+
+            bool dug = false;
+            if (hDir.sqrMagnitude > 0.001f && IsVoxelBlocking(hDir, out Vector3 hp))
+            {
+                worldManager.ModifyTerrain(hp, digRadius, digStrength, VoxelType.Air);
+                dug = true;
+            }
+            if (vDir.sqrMagnitude > 0.001f && IsVoxelBlocking(vDir, out Vector3 vp))
+            {
+                worldManager.ModifyTerrain(vp, digRadius, digStrength, VoxelType.Air);
+                dug = true;
+            }
+
+            if (dug) _lastActionTime = Time.time;
+        }
+
+        /// <summary>
+        /// 이동 방향으로 SphereCast(반경 = digRadius) 후 Voxel(MeshCollider)이 막고 있으면 true.
         /// <paramref name="blockPoint"/>: 파기 목표점 (Voxel 내부 약간).
         /// </summary>
         bool IsVoxelBlocking(Vector3 dir, out Vector3 blockPoint)
         {
             blockPoint = Vector3.zero;
 
-            float    checkDist = _cc.radius + digDetectDist;
-            Vector3  origin    = transform.position + _cc.center;
+            float   checkDist = _cc.radius + detectionRange;
+            Vector3 origin    = transform.position + _cc.center;
 
-            if (!Physics.Raycast(origin, dir, out RaycastHit hit, checkDist,
+            if (!Physics.SphereCast(origin, digRadius, dir, out RaycastHit hit, checkDist,
                     ~0, QueryTriggerInteraction.Ignore))
                 return false;
 
@@ -221,10 +293,10 @@ namespace BioBreach.Controller.Enemy
         {
             if (target == null || !target.IsAlive) return;
             if ((transform.position - target.transform.position).sqrMagnitude > attackRange * attackRange) return;
-            if (Time.time - _lastAttackTime < attackCooldown) return;
+            if (Time.time - _lastActionTime < attackCooldown) return;
 
             target.TakeDamage(attackDamage);
-            _lastAttackTime = Time.time;
+            _lastActionTime = Time.time;
         }
 
         // =====================================================================
@@ -240,7 +312,7 @@ namespace BioBreach.Controller.Enemy
 
             // 전방 감지 레이
             Gizmos.color = Color.magenta;
-            Gizmos.DrawRay(transform.position, transform.forward * (_cc != null ? _cc.radius + digDetectDist : digDetectDist));
+            Gizmos.DrawRay(transform.position, transform.forward * (_cc != null ? _cc.radius + detectionRange : detectionRange));
         }
     }
 }

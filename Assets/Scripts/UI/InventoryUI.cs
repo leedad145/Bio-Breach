@@ -9,9 +9,12 @@
 // =============================================================================
 using System.Collections.Generic;
 using UnityEngine;
-using BioBreach.Core.Item;
 using BioBreach.Engine.Inventory;
+using BioBreach.Engine.Item;
+using BioBreach.Engine.Data;
 using BioBreach.Controller.Player;
+using BioBreach.Controller.Matriarch;
+
 
 namespace MarchingCubesProject.Player
 {
@@ -81,6 +84,12 @@ namespace MarchingCubesProject.Player
         private GUIStyle _sLabel, _sCount, _sTooltip, _sTitle;
         private bool     _stylesReady = false;
 
+        // ── 조합 패널 ──────────────────────────────────────────────────────────
+        private MatriarchCraftingStation _station;
+        private Vector2                  _craftScroll;
+        private const int CraftW = 320;
+        private const int CraftGap = 8; // 인벤토리 창과의 간격
+
         private const int TitleH  = 28;
         private const int Padding  = 10;
 
@@ -112,6 +121,9 @@ namespace MarchingCubesProject.Player
 
         void Update()
         {
+            // 비소유자 플레이어의 InventoryUI는 동작하지 않는다
+            if (_controller == null || !_controller.IsOwner) return;
+
             // OnGUI의 Event는 Update보다 늦게 오므로
             // 마우스 위치는 Input에서 직접 받아 좌표 반전 (GUI는 Y 반전 없음)
             _mousePos = new Vector2(Input.mousePosition.x,
@@ -141,6 +153,10 @@ namespace MarchingCubesProject.Player
                 RecalcLayout();
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible   = true;
+                // 근처 MatriarchCraftingStation 탐색
+                _station = FindAnyObjectByType<MatriarchCraftingStation>();
+                if (_station != null) GameDataLoader.EnsureLoaded();
+                _craftScroll = Vector2.zero;
             }
             else
             {
@@ -160,6 +176,9 @@ namespace MarchingCubesProject.Player
 
         void OnGUI()
         {
+            // 비소유자 플레이어의 UI는 그리지 않는다
+            if (_controller == null || !_controller.IsOwner) return;
+
             EnsureStyles();
             _tooltipItem = null;
 
@@ -176,6 +195,13 @@ namespace MarchingCubesProject.Player
 
             // 그리드
             DrawGrid();
+
+            // 조합 패널 (Matriarch 범위 안일 때)
+            if (_station != null && _station.IsLocalPlayerInRange)
+                DrawCraftingPanel();
+
+            // 그리드·핫바 모두 이벤트를 소비하지 않고 MouseUp이 남아있으면 월드 드롭
+            HandleWorldDrop();
 
             // 드래그 고스트 (최상단)
             if (_dragging != null)
@@ -483,19 +509,17 @@ namespace MarchingCubesProject.Player
             GUI.color = Color.white;
 
             float ly = ty + 7;
-            string cc = d.category switch
-            {
-                ItemCategory.VoxelBlock => "#7FC8FF",
-                ItemCategory.Placeable  => "#7FE89A",
-                ItemCategory.Usable     => "#FFD97F",
-                _                       => "#CCCCCC"
-            };
+            string cc = d is VoxelBlockItem ? "#7FC8FF"
+                      : d is PlaceableItem  ? "#7FE89A"
+                      : d is UsableItem     ? "#FFD97F"
+                      : "#CCCCCC";
             GUI.Label(new Rect(tx + 8, ly, tw - 16, 20),
                 $"<color={cc}><b>{d.itemName}</b></color>", _sTooltip); ly += 20;
 
+            string typeName = d.GetType().Name.Replace("ItemSO", "").Replace("SO", "");
             GUI.color = new Color(0.65f, 0.65f, 0.70f);
             GUI.Label(new Rect(tx + 8, ly, tw - 16, 16),
-                $"{d.category}   {d.gridWidth}×{d.gridHeight} 칸", _sTooltip); ly += 18;
+                $"{typeName}   {d.gridWidth}×{d.gridHeight} 칸", _sTooltip); ly += 18;
 
             if (!string.IsNullOrEmpty(d.description))
             {
@@ -532,7 +556,7 @@ namespace MarchingCubesProject.Player
             }
             else
             {
-                GUI.color = CategoryColor(d.category);
+                GUI.color = ItemColor(d);
                 GUI.DrawTexture(inner, Texture2D.whiteTexture);
             }
 
@@ -588,6 +612,28 @@ namespace MarchingCubesProject.Player
         }
 
         // =====================================================================
+        // 월드 드롭 (인벤토리·핫바 밖에서 MouseUp)
+        // =====================================================================
+
+        void HandleWorldDrop()
+        {
+            if (_dragging == null) return;
+            if (Event.current.type != EventType.MouseUp || Event.current.button != 0) return;
+
+            // 이 시점까지 Event.current.Use()가 호출되지 않았으면
+            // 그리드·핫바 어디에도 해당하지 않는 곳에서 마우스를 뗀 것 → 월드 드롭
+            string dropId    = _dragging.data.dataId;
+            int    dropCount = _dragging.count;
+
+            _inventory.TryRemoveItem(_dragging, dropCount);  // 그리드·핫바 양쪽 정리
+            CancelDrag();
+            Event.current.Use();
+
+            if (!string.IsNullOrEmpty(dropId) && _controller != null)
+                _controller.DropItemToWorld(dropId, dropCount);
+        }
+
+        // =====================================================================
         // 좌표 변환
         // =====================================================================
 
@@ -626,13 +672,13 @@ namespace MarchingCubesProject.Player
             return false;
         }
 
-        Color CategoryColor(ItemCategory cat) => cat switch
+        Color ItemColor(ItemBase d)
         {
-            ItemCategory.VoxelBlock => new Color(0.28f, 0.52f, 0.78f, 0.9f),
-            ItemCategory.Placeable  => new Color(0.28f, 0.68f, 0.38f, 0.9f),
-            ItemCategory.Usable     => new Color(0.78f, 0.62f, 0.18f, 0.9f),
-            _                       => new Color(0.45f, 0.45f, 0.48f, 0.9f),
-        };
+            if (d is VoxelBlockItem) return new Color(0.28f, 0.52f, 0.78f, 0.9f);
+            if (d is PlaceableItem)  return new Color(0.28f, 0.68f, 0.38f, 0.9f);
+            if (d is UsableItem)     return new Color(0.78f, 0.62f, 0.18f, 0.9f);
+            return new Color(0.45f, 0.45f, 0.48f, 0.9f);
+        }
 
         string Shorten(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 
@@ -646,6 +692,104 @@ namespace MarchingCubesProject.Player
 
         void DrawBorderBottom(Rect r, int t) =>
             GUI.DrawTexture(new Rect(r.x, r.yMax - t, r.width, t), Texture2D.whiteTexture);
+
+        // =====================================================================
+        // 조합 패널 (인벤토리 창 오른쪽에 표시)
+        // =====================================================================
+
+        void DrawCraftingPanel()
+        {
+            int px    = windowX + WindowW + CraftGap;
+            int py    = windowY;
+            int ph    = WindowH;
+            Rect win  = new Rect(px, py, CraftW, ph);
+
+            // 배경
+            GUI.color = colWindowBg;
+            GUI.DrawTexture(win, Texture2D.whiteTexture);
+            GUI.color = colWindowBorder;
+            DrawBorder(win, 1);
+
+            // 타이틀 바
+            GUI.color = colTitleBar;
+            GUI.DrawTexture(new Rect(px, py, CraftW, TitleH), Texture2D.whiteTexture);
+            GUI.color = colWindowBorder;
+            DrawBorderBottom(new Rect(px, py, CraftW, TitleH), 1);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(px + 10, py + 6, CraftW - 20, 20), "<b>성체 조합소</b>", _sTitle);
+
+            // 스크롤 영역
+            var recipes = GameDataLoader.Crafting.All;
+            float rowH     = 90f;
+            Rect scrollView = new Rect(px + 4, py + TitleH + 4, CraftW - 8, ph - TitleH - 8);
+            Rect scrollContent = new Rect(0, 0, scrollView.width - 18, recipes.Count * (rowH + 4));
+
+            _craftScroll = GUI.BeginScrollView(scrollView, _craftScroll, scrollContent);
+
+            float iy = 0;
+            foreach (var recipe in recipes)
+            {
+                bool canCraft = GameDataLoader.Crafting.CanCraft(recipe, _inventory);
+                DrawRecipeRow(recipe, canCraft, 0, iy, scrollContent.width, rowH);
+                iy += rowH + 4;
+            }
+
+            GUI.EndScrollView();
+            GUI.color = Color.white;
+        }
+
+        void DrawRecipeRow(CraftingRecipe recipe, bool canCraft, float rx, float ry, float rw, float rh)
+        {
+            Rect row = new Rect(rx, ry, rw, rh);
+            GUI.color = canCraft
+                ? new Color(0.12f, 0.22f, 0.12f, 0.95f)
+                : new Color(0.18f, 0.12f, 0.12f, 0.75f);
+            GUI.DrawTexture(row, Texture2D.whiteTexture);
+            GUI.color = canCraft ? new Color(0.3f, 0.6f, 0.3f) : new Color(0.35f, 0.2f, 0.2f);
+            DrawBorder(row, 1);
+
+            // 결과 아이템 이름
+            string resultName = GameDataLoader.Items.TryGet(recipe.resultItemId, out var rd)
+                ? $"{rd.itemName}  ×{recipe.resultCount}"
+                : $"{recipe.resultItemId}  ×{recipe.resultCount}";
+            GUI.color = canCraft ? Color.white : new Color(0.6f, 0.6f, 0.6f);
+            GUI.Label(new Rect(rx + 6, ry + 4, rw - 80, 20), resultName, _sTitle);
+
+            // 재료 목록
+            float my = ry + 24;
+            if (recipe.ingredients != null)
+            {
+                foreach (var ing in recipe.ingredients)
+                {
+                    int have = _inventory.GetTotalCount(ing.itemId);
+                    bool ok  = have >= ing.count;
+                    string ingName = GameDataLoader.Items.TryGet(ing.itemId, out var id2)
+                        ? id2.itemName : ing.itemId;
+                    GUI.color = ok ? new Color(0.65f, 1f, 0.65f) : new Color(1f, 0.5f, 0.5f);
+                    GUI.Label(new Rect(rx + 8, my, rw - 85, 16),
+                        $"• {ingName}  {have}/{ing.count}", _sLabel);
+                    my += 16;
+                }
+            }
+
+            // 조합 버튼
+            Rect btn = new Rect(rx + rw - 72, ry + rh / 2f - 13, 66, 26);
+            if (canCraft)
+            {
+                GUI.color = Color.white;
+                if (GUI.Button(btn, "조합"))
+                {
+                    GameDataLoader.Crafting.Craft(recipe, _inventory, GameDataLoader.Items);
+                }
+            }
+            else
+            {
+                GUI.color = new Color(0.4f, 0.4f, 0.4f, 0.6f);
+                GUI.Button(btn, "조합");
+            }
+
+            GUI.color = Color.white;
+        }
 
         void EnsureStyles()
         {

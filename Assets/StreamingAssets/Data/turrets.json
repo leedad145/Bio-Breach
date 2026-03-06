@@ -1,0 +1,22 @@
+[
+  {
+    "id": "antibody_turret",
+    "displayName": "항체 포탑",
+    "maxHp": 150,
+    "detectionRange": 18.0,
+    "attackRange": 16.0,
+    "attackDamage": 12.0,
+    "attackCooldown": 1.0,
+    "targetPriority": "Nearest"
+  },
+  {
+    "id": "cytokine_cannon",
+    "displayName": "사이토카인 포",
+    "maxHp": 350,
+    "detectionRange": 28.0,
+    "attackRange": 25.0,
+    "attackDamage": 40.0,
+    "attackCooldown": 2.5,
+    "targetPriority": "HighestPriority"
+  }
+]

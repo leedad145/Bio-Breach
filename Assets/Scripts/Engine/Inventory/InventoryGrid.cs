@@ -1,22 +1,21 @@
 // =============================================================================
 // InventoryGrid.cs - 디아블로2 스타일 그리드 인벤토리 데이터
 // =============================================================================
-using System;
 using System.Collections.Generic;
 using UnityEngine;
-using BioBreach.Core.Item;
 using BioBreach.Engine.Item;
 
 namespace BioBreach.Engine.Inventory
 {
     /// <summary>
     /// 그리드 상에 놓인 아이템 인스턴스.
-    /// IItem을 구현하며, PlayerController가 BindToPlayer로 Action1/Action2 람다를 주입한다.
+    /// Action1/2(ctx) 호출 시 data(IItem)의 Action 실행 후
+    /// ActionResult에 따라 인벤토리 Add/Remove를 처리한다.
     /// </summary>
-    public class ItemInstance : IItem
+    public class ItemInstance
     {
-        public ItemDataSO data;
-        public int count;
+        public ItemBase data;
+        public int        count;
 
         /// <summary>그리드 내 좌상단 위치</summary>
         public Vector2Int gridPos;
@@ -27,21 +26,20 @@ namespace BioBreach.Engine.Inventory
         public int Width  => isRotated ? data.gridHeight : data.gridWidth;
         public int Height => isRotated ? data.gridWidth  : data.gridHeight;
 
-        // 주입된 액션 델리게이트 (PlayerController가 BindToPlayer 통해 설정)
-        Func<bool> _action1;
-        Func<bool> _action2;
+        public ActionResult Action1(IPlayerContext ctx) => Dispatch(data.Action1(ctx), ctx);
+        public ActionResult Action2(IPlayerContext ctx) => Dispatch(data.Action2(ctx), ctx);
 
-        public bool Action1() => _action1?.Invoke() ?? false;
-        public bool Action2() => _action2?.Invoke() ?? false;
-
-        /// <summary>PlayerController(IPlayerContext 구현체)가 BindToPlayer에서 호출.</summary>
-        public void SetActions(Func<bool> a1, Func<bool> a2)
+        private ActionResult Dispatch(ActionResult r, IPlayerContext ctx)
         {
-            _action1 = a1;
-            _action2 = a2;
+            if (!r.Performed) return r;
+            if (r.AddItem != null && r.AddCount > 0)
+                ctx.Inventory.TryAddItem(r.AddItem, r.AddCount);
+            if (r.RemoveCount > 0)
+                ctx.Inventory.TryRemoveItem(this, r.RemoveCount);
+            return r;
         }
 
-        public ItemInstance(ItemDataSO data, int count, Vector2Int gridPos, bool isRotated = false)
+        public ItemInstance(ItemBase data, int count, Vector2Int gridPos, bool isRotated = false)
         {
             this.data      = data;
             this.count     = count;
@@ -61,7 +59,7 @@ namespace BioBreach.Engine.Inventory
 
         // 그리드 셀 → 아이템 인스턴스 참조 (빠른 조회용)
         private readonly ItemInstance[,] _grid;
-        
+
         // 실제 아이템 목록
         private readonly List<ItemInstance> _items = new List<ItemInstance>();
 
@@ -78,10 +76,7 @@ namespace BioBreach.Engine.Inventory
         // 배치 가능 여부
         // =====================================================================
 
-        /// <summary>
-        /// 해당 위치에 아이템을 배치할 수 있는지 확인
-        /// </summary>
-        public bool CanPlace(ItemDataSO data, Vector2Int pos, bool rotated = false)
+        public bool CanPlace(ItemBase data, Vector2Int pos, bool rotated = false)
         {
             int w = rotated ? data.gridHeight : data.gridWidth;
             int h = rotated ? data.gridWidth  : data.gridHeight;
@@ -96,7 +91,7 @@ namespace BioBreach.Engine.Inventory
                 {
                     if (x < 0 || x >= Columns || y < 0 || y >= Rows)
                         return false;
-                    
+
                     ItemInstance occupant = _grid[x, y];
                     if (occupant != null && occupant != ignore)
                         return false;
@@ -109,10 +104,7 @@ namespace BioBreach.Engine.Inventory
         // 추가 / 제거
         // =====================================================================
 
-        /// <summary>
-        /// 아이템을 특정 위치에 배치 (성공 여부 반환)
-        /// </summary>
-        public bool TryPlace(ItemDataSO data, int count, Vector2Int pos, bool rotated = false)
+        public bool TryPlace(ItemBase data, int count, Vector2Int pos, bool rotated = false)
         {
             if (!CanPlace(data, pos, rotated)) return false;
 
@@ -122,10 +114,7 @@ namespace BioBreach.Engine.Inventory
             return true;
         }
 
-        /// <summary>
-        /// 빈 공간을 자동 탐색해서 배치 (성공 여부 반환)
-        /// </summary>
-        public bool TryAddAuto(ItemDataSO data, int count = 1)
+        public bool TryAddAuto(ItemBase data, int count = 1)
         {
             // 1. 스택 가능한 기존 슬롯 탐색
             if (data.maxStack > 1)
@@ -163,12 +152,9 @@ namespace BioBreach.Engine.Inventory
                 }
             }
 
-            return false; // 공간 없음
+            return false;
         }
 
-        /// <summary>
-        /// 아이템 인스턴스 제거
-        /// </summary>
         public bool TryRemove(ItemInstance instance, int amount = 1)
         {
             if (!_items.Contains(instance)) return false;
@@ -182,9 +168,6 @@ namespace BioBreach.Engine.Inventory
             return true;
         }
 
-        /// <summary>
-        /// 아이템 이동 (드래그 앤 드롭용)
-        /// </summary>
         public bool TryMove(ItemInstance instance, Vector2Int newPos, bool newRotated)
         {
             int w = newRotated ? instance.data.gridHeight : instance.data.gridWidth;
@@ -203,7 +186,6 @@ namespace BioBreach.Engine.Inventory
         // 조회
         // =====================================================================
 
-        /// <summary>셀 좌표로 아이템 조회</summary>
         public ItemInstance GetAt(int x, int y)
         {
             if (x < 0 || x >= Columns || y < 0 || y >= Rows) return null;
@@ -212,8 +194,7 @@ namespace BioBreach.Engine.Inventory
 
         public ItemInstance GetAt(Vector2Int pos) => GetAt(pos.x, pos.y);
 
-        /// <summary>특정 ItemData의 총 보유량</summary>
-        public int CountOf(ItemDataSO data)
+        public int CountOf(ItemBase data)
         {
             int total = 0;
             foreach (var item in _items)
@@ -221,7 +202,7 @@ namespace BioBreach.Engine.Inventory
             return total;
         }
 
-        public bool Has(ItemDataSO data, int amount = 1) => CountOf(data) >= amount;
+        public bool Has(ItemBase data, int amount = 1) => CountOf(data) >= amount;
 
         // =====================================================================
         // 내부 헬퍼

@@ -1,10 +1,11 @@
 // =============================================================================
 // PlayerController.cs - 1인칭 플레이어 컨트롤러
 // =============================================================================
+using System.Collections.Generic;
 using UnityEngine;
+using Unity.Netcode;
 using BioBreach.Engine.Inventory;
 using BioBreach.Core.Voxel;
-using BioBreach.Core.Item;
 using BioBreach.Systems;
 using BioBreach.Engine.Item;
 
@@ -13,7 +14,7 @@ namespace BioBreach.Controller.Player
     [RequireComponent(typeof(CharacterController))]
     [RequireComponent(typeof(PlayerInventory))]
     [RequireComponent(typeof(PlacementPreview))]
-    public class PlayerController : MonoBehaviour, IPlayerContext
+    public class PlayerController : NetworkBehaviour, IPlayerContext
     {
         // =====================================================================
         // Inspector 설정
@@ -50,6 +51,14 @@ namespace BioBreach.Controller.Player
         public float lightRange       = 30f;
         public float lightIntensity   = 1f;
 
+        [Header("설치 가능한 네트워크 프리팹 목록")]
+        [Tooltip("PlaceableItem이 설치할 수 있는 프리팹들. 인덱스로 ServerRpc에 전달됨.")]
+        public List<GameObject> spawnablePrefabs = new();
+
+        [Header("드롭 아이템")]
+        [Tooltip("DroppedItem NetworkBehaviour가 붙은 프리팹. NetworkManager.NetworkPrefabs에도 등록 필요.")]
+        public GameObject droppedItemPrefab;
+
         [Header("디버그")]
         public bool showDebugUI = true;
 
@@ -74,10 +83,18 @@ namespace BioBreach.Controller.Player
         private RaycastHit _cachedHit;
         private bool       _primaryDown, _primaryHeld, _secondaryDown, _secondaryHeld;
 
-        private GameObject   _lastPreviewPrefab;
-        private ItemInstance _lastBoundItem; // 마지막으로 BindToPlayer한 인스턴스
-
         public bool UIBlocked { get; set; } = false;
+
+        // =====================================================================
+        // 네트워크 동기화 변수 (Owner가 쓰고 나머지가 읽는다)
+        // =====================================================================
+
+        private NetworkVariable<Vector3>    _netPos = new(Vector3.zero,
+            NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+        private NetworkVariable<float>      _netYaw = new(0f,
+            NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+        private NetworkVariable<float>      _netPitch = new(0f,
+            NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
         // =====================================================================
         // IPlayerContext 구현
@@ -115,17 +132,91 @@ namespace BioBreach.Controller.Player
         public void AddMoveSpeed(float v)  => moveSpeed  += v;
         public void AddJumpHeight(float v) => jumpHeight += v;
 
+        public void SpawnObject(GameObject prefab, Vector3 pos, Quaternion rot)
+        {
+            if (prefab == null) return;
+
+            int idx = spawnablePrefabs.IndexOf(prefab);
+            if (idx >= 0)
+            {
+                // 목록에 등록된 NetworkObject 프리팹 → 서버에 인덱스로 스폰 요청
+                SpawnNetworkObjectServerRpc(idx, pos, rot);
+            }
+            else
+            {
+                // 목록에 없는 프리팹 → 로컬 Instantiate (비-네트워크 이펙트 등)
+                Debug.LogWarning($"[PlayerController] '{prefab.name}'이 spawnablePrefabs 목록에 없습니다. 로컬 생성.");
+                Object.Instantiate(prefab, pos, rot);
+            }
+        }
+
+        // =====================================================================
+        // 아이템 월드 드롭
+        // =====================================================================
+
+        /// <summary>인벤토리에서 꺼낸 아이템을 플레이어 앞에 드롭한다. (클라이언트 호출)</summary>
+        public void DropItemToWorld(string itemId, int count)
+        {
+            if (droppedItemPrefab == null)
+            {
+                Debug.LogWarning("[PlayerController] droppedItemPrefab이 설정되지 않았습니다.");
+                return;
+            }
+            Vector3 dropPos = transform.position + transform.forward * 1.5f + Vector3.up * 0.5f;
+            SpawnDroppedItemServerRpc(itemId, count, dropPos);
+        }
+
+        [ServerRpc]
+        private void SpawnDroppedItemServerRpc(string itemId, int count, Vector3 pos)
+        {
+            if (droppedItemPrefab == null) return;
+
+            var go = Object.Instantiate(droppedItemPrefab, pos, Quaternion.identity);
+            if (!go.TryGetComponent<NetworkObject>(out var netObj))
+            {
+                Debug.LogWarning("[PlayerController] droppedItemPrefab에 NetworkObject가 없습니다.");
+                Object.Destroy(go);
+                return;
+            }
+            netObj.Spawn(destroyWithScene: true);
+            if (go.TryGetComponent<DroppedItem>(out var dropped))
+                dropped.Init(itemId, count);
+        }
+
+        [ServerRpc]
+        private void SpawnNetworkObjectServerRpc(int prefabIndex, Vector3 pos, Quaternion rot)
+        {
+            if (prefabIndex < 0 || prefabIndex >= spawnablePrefabs.Count) return;
+
+            var go = Object.Instantiate(spawnablePrefabs[prefabIndex], pos, rot);
+            if (go.TryGetComponent<NetworkObject>(out var netObj))
+                netObj.Spawn(destroyWithScene: true);
+            else
+                Debug.LogWarning($"[PlayerController] spawnablePrefabs[{prefabIndex}]에 NetworkObject가 없습니다.");
+        }
+
         // =====================================================================
         // 초기화
         // =====================================================================
 
-        void Start()
+        public override void OnNetworkSpawn()
         {
             _controller = GetComponent<CharacterController>();
             _inventory  = GetComponent<PlayerInventory>();
             _preview    = GetComponent<PlacementPreview>();
 
-            _camera = GetComponentInChildren<Camera>();
+            _camera    = GetComponentInChildren<Camera>();
+            _spotLight = GetComponentInChildren<Light>();
+
+            // WorldManager 자동 탐색 (Inspector 미연결 시)
+            if (worldManager == null)
+                worldManager = FindAnyObjectByType<WorldManager>();
+
+            // 서버: 모든 플레이어 위치 주변 청크 로드 (AI 이동 등에 필요)
+            // 클라이언트: 자신(IsOwner)의 위치 주변만 로드
+            if (IsServer || IsOwner)
+                worldManager?.RegisterViewer(transform, 5);
+
             if (_camera == null)
             {
                 var camObj = new GameObject("PlayerCamera");
@@ -134,7 +225,6 @@ namespace BioBreach.Controller.Player
                 _camera = camObj.AddComponent<Camera>();
             }
 
-            _spotLight = GetComponentInChildren<Light>();
             if (_spotLight == null)
             {
                 var lightObj = new GameObject("PlayerSpotLight");
@@ -147,8 +237,32 @@ namespace BioBreach.Controller.Player
             _spotLight.range     = lightRange;
             _spotLight.intensity = lightIntensity;
 
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible   = false;
+            // 소유자가 아니면 카메라·스팟라이트 비활성화 (다른 플레이어 시점 방지)
+            bool owner = IsOwner;
+            _camera.enabled    = owner;
+            _spotLight.enabled = owner;
+
+            if (owner)
+            {
+                // 스폰 즉시 현재 위치를 NetworkVariable에 기록
+                // → 비소유자가 (0,0,0)으로 끌려가는 것을 방지
+                _netPos.Value   = transform.position;
+                _netYaw.Value   = transform.eulerAngles.y;
+                _netPitch.Value = 0f;
+
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible   = false;
+            }
+            else
+            {
+                // 비소유자는 CharacterController를 끄고 NetworkVariable로 위치를 받는다
+                _controller.enabled = false;
+            }
+        }
+
+        public override void OnNetworkDespawn()
+        {
+            worldManager?.UnregisterViewer(transform);
         }
 
         // =====================================================================
@@ -157,21 +271,46 @@ namespace BioBreach.Controller.Player
 
         void Update()
         {
-            if (UIBlocked)
-            {
-                _preview.Hide();
-                return;
-            }
+            if (!IsSpawned) return;
 
-            HandleMouseLook();
-            HandleMovement();
-            HandleSlotSelection();
-            CacheRaycast();
-            CacheInput();
-            UpdatePlacementPreview();
-            HandleAction();
-            HandleCursorLock();
-            UpdateSpotLight();
+            if (IsOwner)
+            {
+                if (UIBlocked)
+                {
+                    _preview.Hide();
+                    return;
+                }
+
+                HandleMouseLook();
+                HandleMovement();
+                HandleSlotSelection();
+                CacheRaycast();
+                CacheInput();
+                HandleAction();
+                HandleCursorLock();
+                UpdateSpotLight();
+
+                // 이동 후 최신 위치·방향을 NetworkVariable에 기록
+                _netPos.Value   = transform.position;
+                _netYaw.Value   = transform.eulerAngles.y;
+                _netPitch.Value = _pitch;
+            }
+            else
+            {
+                // 비소유자: NetworkVariable 값으로 위치·회전 보간
+                // _netPos가 아직 (0,0,0)이면 Owner가 아직 초기값을 전송하지 않은 상태 → 스킵
+                if (_netPos.Value.sqrMagnitude < 0.001f) return;
+
+                transform.SetPositionAndRotation(
+                    Vector3.Lerp(transform.position, _netPos.Value, Time.deltaTime * 15f),
+                    Quaternion.Lerp(transform.rotation, Quaternion.Euler(0f, _netYaw.Value, 0f), Time.deltaTime * 15f));
+
+                if (_camera != null)
+                    _camera.transform.localRotation = Quaternion.Lerp(
+                        _camera.transform.localRotation,
+                        Quaternion.Euler(_netPitch.Value, 0f, 0f),
+                        Time.deltaTime * 15f);
+            }
         }
 
         // =====================================================================
@@ -285,61 +424,24 @@ namespace BioBreach.Controller.Player
         }
 
         // =====================================================================
-        // 설치 미리보기
-        // =====================================================================
-
-        void UpdatePlacementPreview()
-        {
-            var selected = _inventory.SelectedItem;
-
-            if (selected == null || selected.data.category != ItemCategory.Placeable
-                || selected.data.placeablePrefab == null)
-            {
-                _preview.Hide();
-                _lastPreviewPrefab = null;
-                return;
-            }
-
-            var prefab = selected.data.previewPrefab != null
-                ? selected.data.previewPrefab
-                : selected.data.placeablePrefab;
-
-            if (prefab != _lastPreviewPrefab)
-            {
-                _preview.Initialize(prefab);
-                _lastPreviewPrefab = prefab;
-            }
-
-            if (!_cachedHitValid) { _preview.Hide(); return; }
-
-            Vector3    pos      = _cachedHit.point + _cachedHit.normal * placeNormalOffset;
-            Quaternion rot      = Quaternion.FromToRotation(Vector3.up, _cachedHit.normal);
-
-            _preview.UpdatePose(pos, rot, CanPlaceAt(pos));
-        }
-
-        // =====================================================================
         // 액션 처리 — 선택 변경 시 BindToPlayer, 이후 Action1/Action2 호출
         // =====================================================================
 
         void HandleAction()
         {
-            if (worldManager == null) return;
+            // worldManager가 아직 없으면 재탐색 (클라이언트 타이밍 대응)
+            if (worldManager == null)
+                worldManager = FindAnyObjectByType<WorldManager>();
+
             if (Cursor.lockState != CursorLockMode.Locked) return;
             if (Time.time - _lastActionTime < actionCooldown) return;
 
             var item = _inventory.SelectedItem;
-            if (item == null) { _lastBoundItem = null; return; }
+            if (item == null) return;
 
-            // 선택 아이템이 바뀌었을 때만 재바인딩 (람다 재생성 최소화)
-            if (item != _lastBoundItem)
-            {
-                item.data.BindToPlayer(item, this);
-                _lastBoundItem = item;
-            }
-
-            bool acted = item.Action1() | item.Action2();
-            if (acted) _lastActionTime = Time.time;
+            var r1 = item.Action1(this);
+            var r2 = item.Action2(this);
+            if (r1.Performed || r2.Performed) _lastActionTime = Time.time;
         }
 
         // =====================================================================
@@ -366,7 +468,7 @@ namespace BioBreach.Controller.Player
 
         void OnGUI()
         {
-            if (!showDebugUI) return;
+            if (!IsOwner || !showDebugUI) return;
             if (_inventory == null) return;
 
             int cx = Screen.width / 2, cy = Screen.height / 2;
@@ -378,7 +480,7 @@ namespace BioBreach.Controller.Player
             if (sel != null)
             {
                 GUI.color = Color.yellow;
-                GUI.Label(new Rect(cx + 30, cy - 10, 250, 25), $"[{sel.data.category}] {sel.data.itemName}");
+                GUI.Label(new Rect(cx + 30, cy - 10, 250, 25), $"[{sel.data.GetType().Name}] {sel.data.itemName}");
                 GUI.Label(new Rect(cx + 30, cy + 10, 250, 25), $"수량: {sel.count}");
             }
 

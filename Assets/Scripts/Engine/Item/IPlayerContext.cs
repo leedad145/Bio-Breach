@@ -39,5 +39,12 @@ namespace BioBreach.Engine.Item
         // ── 플레이어 스탯 변경 ───────────────────────────────────────────────
         void AddMoveSpeed(float v);
         void AddJumpHeight(float v);
+
+        // ── 네트워크 오브젝트 설치 ───────────────────────────────────────────
+        /// <summary>
+        /// 프리팹을 월드에 설치. NetworkObject가 있으면 서버에 스폰 요청,
+        /// 없으면 로컬 Instantiate.
+        /// </summary>
+        void SpawnObject(GameObject prefab, Vector3 pos, Quaternion rot);
     }
 }

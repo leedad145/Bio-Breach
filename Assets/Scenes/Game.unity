@@ -128,6 +128,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 25923346}
+  - component: {fileID: 25923347}
   - component: {fileID: 25923345}
   m_Layer: 0
   m_Name: WorldManager
@@ -148,9 +149,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 308d045beff17194bb77cacb24578136, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BioBreach.Systems::MarchingCubesProject.Core.WorldManager
-  player: {fileID: 477943754}
+  ShowTopMostFoldoutHeaderGroup: 1
+  player: {fileID: 0}
   voxelMaterialMap: {fileID: 11400000, guid: 3ae5e054b347f8d4d9d3307d6775a1c2, type: 2}
-  viewDistance: 2
+  viewDistance: 3
   size: 20
   voxelSize: 0.5
 --- !u!4 &25923346
@@ -168,6 +170,31 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &25923347
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 25923344}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 2565292242
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!1 &79452079
 GameObject:
   m_ObjectHideFlags: 0
@@ -180,7 +207,9 @@ GameObject:
   - component: {fileID: 79452083}
   - component: {fileID: 79452082}
   - component: {fileID: 79452081}
+  - component: {fileID: 79452085}
   - component: {fileID: 79452080}
+  - component: {fileID: 79452086}
   m_Layer: 6
   m_Name: Matriarch
   m_TagString: Untagged
@@ -200,6 +229,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 619485f8fa588a241949622a31b1bf91, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BioBreach.Controllers::BioBreach.Controller.Matriarch.MatriarchController
+  ShowTopMostFoldoutHeaderGroup: 1
   entityDisplayName: Entity
   maxHp: 100
   priorityScore: 0
@@ -293,10 +323,123 @@ Transform:
   m_GameObject: {fileID: 79452079}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -1.88, y: 1.41, z: -2.33}
+  m_LocalPosition: {x: -1.88, y: 2.42, z: -2.33}
   m_LocalScale: {x: 3, y: 3, z: 3}
   m_ConstrainProportionsScale: 0
   m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &79452085
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 79452079}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 110199400
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
+--- !u!114 &79452086
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 79452079}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 41a2aa03f97f70541be606bee94fae0f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BioBreach.Controllers::BioBreach.Controller.Matriarch.MatriarchCraftingStation
+  interactRadius: 6
+--- !u!1 &163083066
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 163083069}
+  - component: {fileID: 163083067}
+  - component: {fileID: 163083068}
+  m_Layer: 0
+  m_Name: PlayerSpawnManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &163083067
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 163083066}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 2149501783
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
+--- !u!114 &163083068
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 163083066}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fc5fd64fcd2851640894b8c01b719fcc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BioBreach.Systems::BioBreach.Systems.PlayerSpawnManager
+  ShowTopMostFoldoutHeaderGroup: 1
+  _playerPrefab: {fileID: 469343504784672423, guid: 6a83daccd913df341b94a802710f26ea, type: 3}
+  _spawnPoints:
+  - {fileID: 831975832}
+--- !u!4 &163083069
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 163083066}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 2, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 831975832}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &365968890
@@ -328,6 +471,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3ea9515e381f6f1488707e855f02e027, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BioBreach.Controllers::BioBreach.Controller.Enemy.EnemySpawner
+  ShowTopMostFoldoutHeaderGroup: 1
   enemyPrefab: {fileID: 8014559596637896618, guid: 0731ff80d83a02744966a65c3b3fc02f, type: 3}
   spawnInterval: 5
   scalingPerSpawn: 0.1
@@ -345,13 +489,13 @@ Transform:
   m_GameObject: {fileID: 365968890}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -26.77}
+  m_LocalPosition: {x: 0, y: 5.24, z: -26.77}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &477943748
+--- !u!1 &704168228
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -359,233 +503,77 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 477943754}
-  - component: {fileID: 477943753}
-  - component: {fileID: 477943752}
-  - component: {fileID: 477943751}
-  - component: {fileID: 477943750}
-  - component: {fileID: 477943749}
-  - component: {fileID: 477943756}
-  - component: {fileID: 477943755}
-  - component: {fileID: 477943757}
+  - component: {fileID: 704168230}
+  - component: {fileID: 704168229}
   m_Layer: 0
-  m_Name: Player
+  m_Name: GameLifetimeScope
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &477943749
+--- !u!114 &704168229
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 477943748}
+  m_GameObject: {fileID: 704168228}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 681c9a4f69c19784599a0aad4a44cbd0, type: 3}
+  m_Script: {fileID: 11500000, guid: af99acb55ef919448bb34b3c3f7f8f85, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: BioBreach.Controllers::BioBreach.Controllers.TestPlayer
-  moveSpeed: 5
-  jumpHeight: 5
-  gravityMultiplier: 2
-  mouseSensitivity: 2
-  minPitch: -80
-  maxPitch: 80
-  interactDistance: 10
-  placeNormalOffset: 0.05
-  actionCooldown: 0.1
-  groundLayer:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  worldManager: {fileID: 25923345}
-  lightFollowSpeed: 6
-  lightSpotAngle: 60
-  lightRange: 30
-  lightIntensity: 30
-  showDebugUI: 1
---- !u!143 &477943750
-CharacterController:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 477943748}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Height: 2
-  m_Radius: 0.5
-  m_SlopeLimit: 45
-  m_StepOffset: 0.3
-  m_SkinWidth: 0.08
-  m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0, z: 0}
---- !u!136 &477943751
-CapsuleCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 477943748}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 2
-  m_Radius: 0.5
-  m_Height: 2
-  m_Direction: 1
-  m_Center: {x: 0, y: 0, z: 0}
---- !u!23 &477943752
-MeshRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 477943748}
-  m_Enabled: 1
-  m_CastShadows: 1
-  m_ReceiveShadows: 1
-  m_DynamicOccludee: 1
-  m_StaticShadowCaster: 0
-  m_MotionVectors: 1
-  m_LightProbeUsage: 1
-  m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
-  m_RayTraceProcedural: 0
-  m_RayTracingAccelStructBuildFlagsOverride: 0
-  m_RayTracingAccelStructBuildFlags: 1
-  m_SmallMeshCulling: 1
-  m_ForceMeshLod: -1
-  m_MeshLodSelectionBias: 0
-  m_RenderingLayerMask: 1
-  m_RendererPriority: 0
-  m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
-  m_StaticBatchInfo:
-    firstSubMesh: 0
-    subMeshCount: 0
-  m_StaticBatchRoot: {fileID: 0}
-  m_ProbeAnchor: {fileID: 0}
-  m_LightProbeVolumeOverride: {fileID: 0}
-  m_ScaleInLightmap: 1
-  m_ReceiveGI: 1
-  m_PreserveUVs: 0
-  m_IgnoreNormalsForChartDetection: 0
-  m_ImportantGI: 0
-  m_StitchLightmapSeams: 1
-  m_SelectedEditorRenderState: 3
-  m_MinimumChartSize: 4
-  m_AutoUVMaxDistance: 0.5
-  m_AutoUVMaxAngle: 89
-  m_LightmapParameters: {fileID: 0}
-  m_GlobalIlluminationMeshLod: 0
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
-  m_MaskInteraction: 0
-  m_AdditionalVertexStreams: {fileID: 0}
---- !u!33 &477943753
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 477943748}
-  m_Mesh: {fileID: 10208, guid: 0000000000000000e000000000000000, type: 0}
---- !u!4 &477943754
+  m_EditorClassIdentifier: BioBreach.Installer::BioBreach.Installer.GameLifetimeScope
+  parentReference:
+    TypeName: 
+  autoRun: 1
+  autoInjectGameObjects: []
+--- !u!4 &704168230
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 477943748}
+  m_GameObject: {fileID: 704168228}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &477943755
-MonoBehaviour:
+--- !u!1 &831975831
+GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 477943748}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c8d24c6f4d9ab084299f24ccbc1973b9, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: BioBreach.Engine::BioBreach.Engine.Inventory.PlacementPreview
-  overrideMaterial: {fileID: 2100000, guid: 057b37e6a627b194cb677c9ad2f85164, type: 2}
---- !u!114 &477943756
-MonoBehaviour:
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 831975832}
+  m_Layer: 0
+  m_Name: SpawnPoint
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &831975832
+Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 477943748}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1a1ca747c0725f7469a51cdf32cb1a8e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: BioBreach.Engine::BioBreach.Engine.Inventory.PlayerInventory
-  gridColumns: 10
-  gridRows: 6
-  hotbarSize: 5
-  startItems:
-  - {fileID: 11400000, guid: d3e797a428cb9c84688b2ef050028b3c, type: 2}
-  - {fileID: 11400000, guid: a7bcf5a5e1cda7649ae4b956b7ca7542, type: 2}
---- !u!114 &477943757
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 477943748}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 79a4e18d36ca9474cb6e00e531f120e6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: BioBreach.UI::MarchingCubesProject.Player.InventoryUI
-  cellSize: 52
-  cellPadding: 3
-  windowX: 120
-  windowY: 80
-  hotbarCellSize: 58
-  colWindowBg: {r: 0.08, g: 0.08, b: 0.1, a: 0.96}
-  colWindowBorder: {r: 0.35, g: 0.35, b: 0.4, a: 1}
-  colTitleBar: {r: 0.12, g: 0.12, b: 0.16, a: 1}
-  colEmpty: {r: 0.13, g: 0.14, b: 0.16, a: 0.95}
-  colOccupied: {r: 0.22, g: 0.32, b: 0.44, a: 0.95}
-  colHotbarItem: {r: 0.2, g: 0.3, b: 0.42, a: 0.95}
-  colSelected: {r: 0.88, g: 0.72, b: 0.18, a: 0.95}
-  colHover: {r: 0.38, g: 0.52, b: 0.68, a: 0.9}
-  colDragGhost: {r: 0.25, g: 0.55, b: 1, a: 0.65}
-  colHotbarBg: {r: 0.08, g: 0.08, b: 0.1, a: 0.92}
-  colHotbarBorder: {r: 0.3, g: 0.3, b: 0.35, a: 1}
-  colCanDrop: {r: 0.15, g: 0.8, b: 0.25, a: 0.55}
-  colCannotDrop: {r: 0.8, g: 0.15, b: 0.15, a: 0.55}
+  m_GameObject: {fileID: 831975831}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 163083069}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1245428307
 GameObject:
   m_ObjectHideFlags: 0
@@ -659,13 +647,13 @@ Transform:
   m_GameObject: {fileID: 1245428307}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 1, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1482632704
+--- !u!1 &1491021012
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -673,24 +661,24 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1482632708}
-  - component: {fileID: 1482632707}
-  - component: {fileID: 1482632706}
-  - component: {fileID: 1482632705}
+  - component: {fileID: 1491021016}
+  - component: {fileID: 1491021015}
+  - component: {fileID: 1491021014}
+  - component: {fileID: 1491021013}
   m_Layer: 0
-  m_Name: Cube
+  m_Name: Plane
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!65 &1482632705
-BoxCollider:
+--- !u!64 &1491021013
+MeshCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1482632704}
+  m_GameObject: {fileID: 1491021012}
   m_Material: {fileID: 0}
   m_IncludeLayers:
     serializedVersion: 2
@@ -702,16 +690,17 @@ BoxCollider:
   m_IsTrigger: 0
   m_ProvidesContacts: 0
   m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 1, y: 1, z: 1}
-  m_Center: {x: 0, y: 0, z: 0}
---- !u!23 &1482632706
+  serializedVersion: 5
+  m_Convex: 0
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 10209, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &1491021014
 MeshRenderer:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1482632704}
+  m_GameObject: {fileID: 1491021012}
   m_Enabled: 1
   m_CastShadows: 1
   m_ReceiveShadows: 1
@@ -754,24 +743,24 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!33 &1482632707
+--- !u!33 &1491021015
 MeshFilter:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1482632704}
-  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
---- !u!4 &1482632708
+  m_GameObject: {fileID: 1491021012}
+  m_Mesh: {fileID: 10209, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!4 &1491021016
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1482632704}
+  m_GameObject: {fileID: 1491021012}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -1, z: 0}
+  m_LocalPosition: {x: 0, y: 1, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -809,18 +798,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1189ded23c68ba44099ad4c5e3953ae1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BioBreach.Controllers::BioBreach.Controller.Turret.TurretController
+  ShowTopMostFoldoutHeaderGroup: 1
   entityDisplayName: Entity
   maxHp: 100
   priorityScore: 0
-  detectionRange: 20
-  attackRange: 18
+  dataId: 
   enemyLayer:
     serializedVersion: 2
     m_Bits: 128
+  barrel: {fileID: 0}
+  detectionRange: 20
+  attackRange: 18
   attackDamage: 15
   attackCooldown: 0.8
   targetPriority: 0
-  barrel: {fileID: 0}
 --- !u!65 &1592436754
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -919,9 +910,10 @@ SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
   - {fileID: 1245428310}
-  - {fileID: 477943754}
   - {fileID: 25923346}
-  - {fileID: 1482632708}
   - {fileID: 365968892}
   - {fileID: 79452084}
   - {fileID: 1592436757}
+  - {fileID: 704168230}
+  - {fileID: 163083069}
+  - {fileID: 1491021016}

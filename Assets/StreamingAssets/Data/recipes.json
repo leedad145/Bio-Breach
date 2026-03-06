@@ -1,0 +1,20 @@
+[
+  {
+    "id": "recipe_heal_serum",
+    "ingredients": [
+      { "itemId": "raw_protein",         "count": 3 },
+      { "itemId": "raw_calcium",         "count": 1 }
+    ],
+    "resultItemId": "heal_serum",
+    "resultCount": 1
+  },
+  {
+    "id": "recipe_adrenaline_shot",
+    "ingredients": [
+      { "itemId": "raw_genetic_essence", "count": 2 },
+      { "itemId": "raw_iron",            "count": 2 }
+    ],
+    "resultItemId": "adrenaline_shot",
+    "resultCount": 1
+  }
+]

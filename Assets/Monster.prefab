@@ -12,7 +12,9 @@ GameObject:
   - component: {fileID: 4511217209950067120}
   - component: {fileID: 792287993531716537}
   - component: {fileID: 1747368579780100761}
+  - component: {fileID: -8072141011576632660}
   - component: {fileID: 6725853436499842584}
+  - component: {fileID: 4537034403423533112}
   m_Layer: 7
   m_Name: Monster
   m_TagString: Untagged
@@ -113,6 +115,31 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &-8072141011576632660
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8014559596637896618}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 2077564668
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!114 &6725853436499842584
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -125,22 +152,55 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 70ab57e6a47dead489c4710ab1c2d313, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BioBreach.Controllers::BioBreach.Controller.Enemy.EnemyController
+  ShowTopMostFoldoutHeaderGroup: 1
   entityDisplayName: Entity
   maxHp: 100
   priorityScore: 0
-  moveSpeed: 5
-  detectionRange: 15
-  attackRange: 2
+  dataId: 
   defenseLayer:
     serializedVersion: 2
     m_Bits: 64
+  matriarchTarget: {fileID: 0}
+  worldManager: {fileID: 0}
+  moveSpeed: 5
+  gravityMultiplier: 2
+  detectionRange: 15
+  attackRange: 1
   attackDamage: 10
   attackCooldown: 1
   targetPriority: 0
-  matriarchTarget: {fileID: 0}
   digRadius: 2
-  digStrength: 0.3
-  worldManager: {fileID: 0}
+  digStrength: 1
+  jumpSpeed: 10
+  jumpAngles:
+  - 30
+  - 45
+  - 60
   hpMultiplier: 1
   damageMultiplier: 1
   speedMultiplier: 1
+--- !u!143 &4537034403423533112
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8014559596637896618}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 2
+  m_Radius: 0.5
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0, z: 0}

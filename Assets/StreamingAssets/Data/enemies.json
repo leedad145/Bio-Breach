@@ -1,0 +1,30 @@
+[
+  {
+    "id": "neutro_grunt",
+    "displayName": "호중구",
+    "maxHp": 50,
+    "moveSpeed": 8.0,
+    "gravityMultiplier": 2.0,
+    "detectionRange": 5.0,
+    "attackRange": 2.0,
+    "attackDamage": 2.0,
+    "attackCooldown": 1.0,
+    "targetPriority": "Nearest",
+    "digRadius": 2.5,
+    "digStrength": 1.5
+  },
+  {
+    "id": "macro_titan",
+    "displayName": "대식세포",
+    "maxHp": 400,
+    "moveSpeed": 4.0,
+    "gravityMultiplier": 2.0,
+    "detectionRange": 20.0,
+    "attackRange": 4.0,
+    "attackDamage": 22.0,
+    "attackCooldown": 2.5,
+    "targetPriority": "Nearest",
+    "digRadius": 4.0,
+    "digStrength": 3.0
+  }
+]

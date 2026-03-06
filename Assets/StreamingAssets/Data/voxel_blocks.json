@@ -1,0 +1,54 @@
+[
+  {
+    "id": "protein_block",
+    "type": "VoxelBlock",
+    "itemName": "단백질 블록",
+    "description": "단백질 지형을 설치합니다.",
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "maxStack": 50000,
+    "voxelType": "Protein",
+    "editMode": "Add",
+    "editRadius": 3.0,
+    "editStrength": 0.3
+  },
+  {
+    "id": "iron_block",
+    "type": "VoxelBlock",
+    "itemName": "철분 블록",
+    "description": "철분 지형을 설치합니다.",
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "maxStack": 50000,
+    "voxelType": "Iron",
+    "editMode": "Add",
+    "editRadius": 3.0,
+    "editStrength": 0.3
+  },
+  {
+    "id": "calcium_block",
+    "type": "VoxelBlock",
+    "itemName": "칼슘 블록",
+    "description": "칼슘 지형을 설치합니다.",
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "maxStack": 50000,
+    "voxelType": "Calcium",
+    "editMode": "Add",
+    "editRadius": 3.0,
+    "editStrength": 0.3
+  },
+  {
+    "id": "geneticEssence_block",
+    "type": "VoxelBlock",
+    "itemName": "유전자 정수 블록",
+    "description": "유전자 정수 지형을 설치합니다.",
+    "gridWidth": 1,
+    "gridHeight": 1,
+    "maxStack": 50000,
+    "voxelType": "GeneticEssence",
+    "editMode": "Add",
+    "editRadius": 3.0,
+    "editStrength": 0.3
+  }
+]
