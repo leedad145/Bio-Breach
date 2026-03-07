@@ -2,7 +2,7 @@ namespace BioBreach.Engine.Data
 {
     /// <summary>
     /// JSON에서 읽는 아이템 데이터. type 필드로 SO 서브클래스를 결정한다.
-    /// type: "VoxelBlock" | "Usable" | "Placeable" | "MeleeWeapon"
+    /// type: "VoxelBlock" | "Usable" | "Placeable" | "MeleeWeapon" | "Equippable"
     /// </summary>
     public class ItemData
     {
@@ -37,5 +37,13 @@ namespace BioBreach.Engine.Data
         // ── UniversalMiner ────────────────────────────────────────────────────
         // 인덱스 = (int)VoxelType. 0=Air(빈 문자열), 1=Protein, 2=Iron, 3=Calcium, 4=GeneticEssence
         public string[] voxelDropIds;
+
+        // ── Equippable ────────────────────────────────────────────────────────
+        // equipSlot: "Head" | "Chest" | "Hands" | "Legs" | "Feet"
+        public string equipSlot         = "Chest";
+        public float  hpBonus           = 0f;
+        public float  moveSpeedBonus    = 0f;
+        public float  jumpHeightBonus   = 0f;
+        public float  attackDamageBonus = 0f;
     }
 }

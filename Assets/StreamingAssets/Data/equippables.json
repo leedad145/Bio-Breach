@@ -1,0 +1,72 @@
+[
+  {
+    "id": "helmet_protein",
+    "type": "Equippable",
+    "itemName": "단백질 헬멧",
+    "description": "세포막 단백질로 만든 방어구. 체력을 높여준다.",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "maxStack": 1,
+    "equipSlot": "Head",
+    "hpBonus": 25.0,
+    "moveSpeedBonus": 0.0,
+    "jumpHeightBonus": 0.0,
+    "attackDamageBonus": 0.0
+  },
+  {
+    "id": "chest_iron",
+    "type": "Equippable",
+    "itemName": "철 흉갑",
+    "description": "철분으로 굳힌 튼튼한 흉갑. 체력과 이동속도를 보정한다.",
+    "gridWidth": 2,
+    "gridHeight": 3,
+    "maxStack": 1,
+    "equipSlot": "Chest",
+    "hpBonus": 50.0,
+    "moveSpeedBonus": 1.0,
+    "jumpHeightBonus": 0.0,
+    "attackDamageBonus": 0.0
+  },
+  {
+    "id": "gloves_calcium",
+    "type": "Equippable",
+    "itemName": "칼슘 장갑",
+    "description": "뼈처럼 단단한 칼슘 장갑. 공격력을 높인다.",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "maxStack": 1,
+    "equipSlot": "Hands",
+    "hpBonus": 0.0,
+    "moveSpeedBonus": 0.0,
+    "jumpHeightBonus": 0.0,
+    "attackDamageBonus": 10.0
+  },
+  {
+    "id": "legs_protein",
+    "type": "Equippable",
+    "itemName": "단백질 다리갑옷",
+    "description": "이동속도와 점프력을 강화하는 하체 장비.",
+    "gridWidth": 2,
+    "gridHeight": 3,
+    "maxStack": 1,
+    "equipSlot": "Legs",
+    "hpBonus": 10.0,
+    "moveSpeedBonus": 2.0,
+    "jumpHeightBonus": 0.5,
+    "attackDamageBonus": 0.0
+  },
+  {
+    "id": "boots_genetic",
+    "type": "Equippable",
+    "itemName": "유전자 부츠",
+    "description": "유전 정보로 강화된 부츠. 엄청난 점프력을 부여한다.",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "maxStack": 1,
+    "equipSlot": "Feet",
+    "hpBonus": 0.0,
+    "moveSpeedBonus": 1.5,
+    "jumpHeightBonus": 1.5,
+    "attackDamageBonus": 0.0
+  }
+]

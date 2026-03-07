@@ -1,50 +1,29 @@
-using BioBreach.Engine.Inventory;
-using BioBreach.Core.Voxel;
-using UnityEngine;
+// =============================================================================
+// IPlayerContext.cs - 아이템이 PlayerController에 접근하는 통합 컨텍스트
+// =============================================================================
+// ISP 준수: 각 책임은 아래 다섯 개 하위 인터페이스로 분리됨.
+//   IInputProvider      — 마우스 버튼 상태
+//   IRaycastProvider    — 레이캐스트 / 공격 원점
+//   ITerrainInteractor  — 복셀 지형 조회 · 편집
+//   IPlacementContext   — 오브젝트 배치
+//   IInventoryContext   — 인벤토리 · 장착 · 스탯
+//
+// 기존 코드는 IPlayerContext 를 그대로 사용하면 됨.
+// 새 아이템 클래스는 필요한 하위 인터페이스만 매개변수로 받을 수 있음.
+// =============================================================================
 
 namespace BioBreach.Engine.Item
 {
     /// <summary>
-    /// PlayerController가 아이템에 노출하는 컨텍스트 인터페이스.
-    /// ItemDataSO.BindToPlayer(ItemInstance, IPlayerContext) 에서 람다 캡처에 사용.
-    /// PlayerController가 이 인터페이스를 직접 구현하므로 별도 객체 불필요.
+    /// PlayerController가 아이템에 노출하는 통합 컨텍스트.
+    /// 하위 인터페이스를 모두 구현한다.
     /// </summary>
     public interface IPlayerContext
+        : IInputProvider
+        , IRaycastProvider
+        , ITerrainInteractor
+        , IPlacementContext
+        , IInventoryContext
     {
-        // ── 인벤토리 ────────────────────────────────────────────────────────
-        PlayerInventory Inventory { get; }
-
-        // ── 배치 ────────────────────────────────────────────────────────────
-        float PlaceNormalOffset { get; }
-        bool  CanPlaceAt(Vector3 pos);
-
-        // ── Raycast ─────────────────────────────────────────────────────────
-        bool       HasHit { get; }
-        RaycastHit Hit    { get; }
-
-        // ── 공격 파라미터 ────────────────────────────────────────────────────
-        Vector3 AttackOrigin    { get; }
-        Vector3 AttackDirection { get; }
-
-        // ── 입력 상태 (매 프레임 PlayerController가 캐시) ──────────────────
-        bool PrimaryDown   { get; }
-        bool PrimaryHeld   { get; }
-        bool SecondaryDown { get; }
-        bool SecondaryHeld { get; }
-
-        // ── 지형 조작 ────────────────────────────────────────────────────────
-        VoxelType GetVoxelTypeAt(Vector3 worldPos);
-        float     ModifyTerrain(Vector3 pos, float radius, float strength, VoxelType type);
-
-        // ── 플레이어 스탯 변경 ───────────────────────────────────────────────
-        void AddMoveSpeed(float v);
-        void AddJumpHeight(float v);
-
-        // ── 네트워크 오브젝트 설치 ───────────────────────────────────────────
-        /// <summary>
-        /// 프리팹을 월드에 설치. NetworkObject가 있으면 서버에 스폰 요청,
-        /// 없으면 로컬 Instantiate.
-        /// </summary>
-        void SpawnObject(GameObject prefab, Vector3 pos, Quaternion rot);
     }
 }

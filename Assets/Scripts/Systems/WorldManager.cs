@@ -321,20 +321,20 @@ namespace BioBreach.Systems
         /// Client에서 호출 → Server를 통해 다른 클라이언트에 동기화.
         /// 클라이언트는 렉 방지를 위해 로컬에 즉시 적용하고, 서버는 요청자를 제외한 나머지에게 브로드캐스트.
         /// </summary>
-        public float ModifyTerrain(Vector3 worldPoint, float radius, float strength,
-                                   VoxelType placeType = VoxelType.Air)
+        public float[] ModifyTerrain(Vector3 worldPoint, float radius, float strength,
+                                     VoxelType placeType = VoxelType.Air)
         {
             if (IsServer)
             {
                 // Server 로컬 적용 후 모든 Client에게 브로드캐스트
-                float result = ApplyModifyLocally(worldPoint, radius, strength, placeType);
+                float[] result = ApplyModifyLocally(worldPoint, radius, strength, placeType);
                 BroadcastModifyClientRpc(worldPoint, radius, strength, (byte)placeType);
                 return result;
             }
             else
             {
                 // Client: 로컬 즉시 적용(렉 없음) + 서버에 동기화 요청
-                float result = ApplyModifyLocally(worldPoint, radius, strength, placeType);
+                float[] result = ApplyModifyLocally(worldPoint, radius, strength, placeType);
                 RequestModifyServerRpc(worldPoint, radius, strength, (byte)placeType);
                 return result;
             }
@@ -369,17 +369,20 @@ namespace BioBreach.Systems
             ApplyModifyLocally(worldPoint, radius, strength, (VoxelType)placeType);
         }
 
-        private float ApplyModifyLocally(Vector3 worldPoint, float radius, float strength,
-                                         VoxelType placeType)
+        private float[] ApplyModifyLocally(Vector3 worldPoint, float radius, float strength,
+                                           VoxelType placeType)
         {
-            float margin   = radius + voxelSize;
-            float totalDug = 0f;
+            float  margin          = radius + voxelSize;
+            float[] totalDugByType = new float[5];
             foreach (var kvp in _activeChunks)
             {
                 if (kvp.Value.ContainsPoint(worldPoint, margin))
-                    totalDug += kvp.Value.ModifyDensity(worldPoint, radius, strength, placeType);
+                {
+                    float[] chunk = kvp.Value.ModifyDensity(worldPoint, radius, strength, placeType);
+                    for (int i = 0; i < 5; i++) totalDugByType[i] += chunk[i];
+                }
             }
-            return totalDug;
+            return totalDugByType;
         }
 
         // =====================================================================

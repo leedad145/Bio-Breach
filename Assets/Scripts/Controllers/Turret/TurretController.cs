@@ -4,12 +4,12 @@
 // =============================================================================
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using VContainer;
+using Unity.Netcode;
 using BioBreach.Engine.Entity;
 using BioBreach.Engine.Data;
+using BioBreach.Controller.Shared;
 
 namespace BioBreach.Controller.Turret
 {
@@ -46,6 +46,15 @@ namespace BioBreach.Controller.Turret
         [HideInInspector] public TargetPriority targetPriority = TargetPriority.Nearest;
 
         // =====================================================================
+        // 네트워크 포신 회전 동기화 (Server → 모든 클라이언트)
+        // =====================================================================
+
+        private readonly NetworkVariable<Quaternion> _netBarrelRot = new(
+            Quaternion.identity,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+
+        // =====================================================================
         // 내부 변수
         // =====================================================================
 
@@ -79,6 +88,13 @@ namespace BioBreach.Controller.Turret
         public override void OnNetworkSpawn()
         {
             base.OnNetworkSpawn(); // EntityMonoBehaviour HP 초기화
+
+            // 클라이언트: 초기 포신 회전 적용
+            if (!IsServer)
+            {
+                Transform pivot = barrel != null ? barrel : transform;
+                pivot.rotation = _netBarrelRot.Value;
+            }
         }
 
         // =====================================================================
@@ -87,41 +103,32 @@ namespace BioBreach.Controller.Turret
 
         void Update()
         {
-            // 공격 로직은 Server에서만 실행 (Server-authoritative)
-            if (!IsServer || !IsAlive) return;
+            if (!IsSpawned) return;
 
-            var target = SelectTarget();
-            if (target == null) return;
+            if (IsServer)
+            {
+                if (!IsAlive) return;
 
-            AimAt(target.transform.position);
-            TryAttack(target);
+                var target = SelectTarget();
+                if (target == null) return;
+
+                AimAt(target.transform.position);
+                TryAttack(target);
+            }
+            else
+            {
+                // 클라이언트: 서버 포신 회전으로 보간
+                Transform pivot = barrel != null ? barrel : transform;
+                pivot.rotation = Quaternion.Slerp(pivot.rotation, _netBarrelRot.Value, Time.deltaTime * 10f);
+            }
         }
 
         // =====================================================================
-        // 타겟 선택
+        // 타겟 선택 — TargetSelector 공유 유틸리티 위임
         // =====================================================================
 
         EntityMonoBehaviour SelectTarget()
-        {
-            Collider[] hits = Physics.OverlapSphere(transform.position, detectionRange, enemyLayer);
-
-            var candidates = new List<EntityMonoBehaviour>();
-            foreach (var col in hits)
-            {
-                var e = col.GetComponent<EntityMonoBehaviour>();
-                if (e != null && e.IsAlive)
-                    candidates.Add(e);
-            }
-
-            if (candidates.Count == 0) return null;
-
-            return targetPriority switch
-            {
-                TargetPriority.LowestHp       => candidates.OrderBy(e => e.CurrentHp).First(),
-                TargetPriority.HighestPriority => candidates.OrderByDescending(e => e.priorityScore).First(),
-                _                              => candidates.OrderBy(e => (transform.position - e.transform.position).sqrMagnitude).First(),
-            };
-        }
+            => TargetSelector.FindTarget(transform.position, detectionRange, enemyLayer, targetPriority);
 
         // =====================================================================
         // 조준 & 공격
@@ -132,7 +139,10 @@ namespace BioBreach.Controller.Turret
             Transform pivot = barrel != null ? barrel : transform;
             Vector3   dir   = targetPos - pivot.position;
             if (dir.sqrMagnitude > 0.001f)
-                pivot.rotation = Quaternion.LookRotation(dir);
+            {
+                pivot.rotation    = Quaternion.LookRotation(dir);
+                _netBarrelRot.Value = pivot.rotation; // 클라이언트에 포신 회전 동기화
+            }
         }
 
         void TryAttack(EntityMonoBehaviour target)

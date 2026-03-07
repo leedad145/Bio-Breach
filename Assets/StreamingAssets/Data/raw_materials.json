@@ -6,7 +6,7 @@
     "description": "조합 재료로 사용되는 기초 광물입니다.",
     "gridWidth": 1,
     "gridHeight": 1,
-    "maxStack": 99
+    "maxStack": 10000
   },
   {
     "id": "raw_calcium",
@@ -15,7 +15,7 @@
     "description": "조합 재료로 사용되는 기초 광물입니다.",
     "gridWidth": 1,
     "gridHeight": 1,
-    "maxStack": 99
+    "maxStack": 10000
   },
   {
     "id": "raw_genetic_essence",
@@ -24,7 +24,7 @@
     "description": "희귀한 조합 재료입니다.",
     "gridWidth": 1,
     "gridHeight": 1,
-    "maxStack": 50
+    "maxStack": 10000
   },
   {
     "id": "raw_protein",
@@ -33,6 +33,6 @@
     "description": "조합 재료로 사용되는 기초 광물입니다.",
     "gridWidth": 1,
     "gridHeight": 1,
-    "maxStack": 99
+    "maxStack": 10000
   }
 ]

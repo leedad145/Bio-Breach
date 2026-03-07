@@ -27,20 +27,21 @@ namespace BioBreach.Core.Voxel
         {
             _properties = new VoxelProperty[]
             {
-                // [0] Air - 빈 공간 (잠식된 영역), 내구도 0 = 파기 불가
-                new VoxelProperty(VoxelType.Air,            "공기",         0f),
+                //                                                   hardness  dropThreshold
+                // [0] Air - 빈 공간, 파기 불가
+                new VoxelProperty(VoxelType.Air,            "공기",         0f,   0f),
 
-                // [1] Protein - 기본 근육/결합 조직, 건설 재료 (분해 시 단백질 자원 획득)
-                new VoxelProperty(VoxelType.Protein,        "단백질",       1f),
+                // [1] Protein - 기본 재료 (흔함)
+                new VoxelProperty(VoxelType.Protein,        "단백질",       1f,   500f),
 
-                // [2] Iron - 혈관/혈액 조직, 구조 보강재 (분해 시 철분 자원 획득)
-                new VoxelProperty(VoxelType.Iron,           "철분",         3f),
+                // [2] Iron - 구조 보강재 (보통)
+                new VoxelProperty(VoxelType.Iron,           "철분",         3f,   200f),
 
-                // [3] Calcium - 골격 조직, 기본 능력·골격 강화 (분해 시 칼슘 자원 획득)
-                new VoxelProperty(VoxelType.Calcium,        "칼슘",         7f),
+                // [3] Calcium - 골격 재료 (희귀)
+                new VoxelProperty(VoxelType.Calcium,        "칼슘",         7f,   100f),
 
-                // [4] GeneticEssence - 희귀 핵산 물질, 특수 기술 재료 (분해 시 유전자 정수 자원 획득)
-                new VoxelProperty(VoxelType.GeneticEssence, "유전자 정수",  20f),
+                // [4] GeneticEssence - 희귀 핵산 (매우 희귀)
+                new VoxelProperty(VoxelType.GeneticEssence, "유전자 정수",  20f,  50f),
             };
         }
 
@@ -49,9 +50,7 @@ namespace BioBreach.Core.Voxel
             return Properties[(int)type];
         }
 
-        public static float GetHardness(VoxelType type)
-        {
-            return Properties[(int)type].hardness;
-        }
+        public static float GetHardness(VoxelType type)      => Properties[(int)type].hardness;
+        public static float GetDropThreshold(VoxelType type) => Properties[(int)type].dropThreshold;
     }
 }

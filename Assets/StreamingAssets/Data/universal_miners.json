@@ -9,7 +9,7 @@
     "maxStack": 1,
     "editRadius": 3.0,
     "editStrength": 0.2,
-    "voxelDropIds": [ "", "protein_block", "iron_block", "calcium_block", "geneticEssence_block" ]
+    "voxelDropIds": [ "", "raw_protein", "raw_iron", "raw_calcium", "raw_genetic_essence" ]
   },
   {
     "id": "advanced_miner",
@@ -21,6 +21,6 @@
     "maxStack": 1,
     "editRadius": 4.0,
     "editStrength": 0.3,
-    "voxelDropIds": [ "", "protein_block", "iron_block", "calcium_block", "geneticEssence_block" ]
+    "voxelDropIds": [ "", "raw_protein", "raw_iron", "raw_calcium", "raw_genetic_essence" ]
   }
 ]

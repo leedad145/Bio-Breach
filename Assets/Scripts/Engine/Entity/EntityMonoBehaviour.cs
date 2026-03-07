@@ -39,9 +39,12 @@ namespace BioBreach.Engine.Entity
             NetworkVariableWritePermission.Server
         );
 
+        /// <summary>장비 스탯 보너스 — PlayerController의 RecalculateStats에서 설정</summary>
+        public float maxHpBonus = 0f;
+
         public string EntityName => entityDisplayName;
         public float  CurrentHp  => _netCurrentHp.Value;
-        public float  MaxHp      => maxHp;
+        public float  MaxHp      => maxHp + maxHpBonus;
         public bool   IsAlive    => _netCurrentHp.Value > 0f;
 
         /// <summary>HP가 0이 될 때 모든 클라이언트에서 발생</summary>
@@ -89,7 +92,7 @@ namespace BioBreach.Engine.Entity
         public virtual void Heal(float amount)
         {
             if (IsServer)
-                _netCurrentHp.Value = Mathf.Min(maxHp, _netCurrentHp.Value + amount);
+                _netCurrentHp.Value = Mathf.Min(MaxHp, _netCurrentHp.Value + amount);
             else
                 HealServerRpc(amount);
         }
@@ -104,7 +107,7 @@ namespace BioBreach.Engine.Entity
         [ServerRpc(RequireOwnership = false)]
         private void HealServerRpc(float amount)
         {
-            _netCurrentHp.Value = Mathf.Min(maxHp, _netCurrentHp.Value + amount);
+            _netCurrentHp.Value = Mathf.Min(MaxHp, _netCurrentHp.Value + amount);
         }
 
         private void ServerApplyDamage(float amount)

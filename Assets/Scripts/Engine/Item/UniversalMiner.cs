@@ -13,25 +13,39 @@ namespace BioBreach.Engine.Item
         public float      editStrength = 0.3f;
         public ItemBase[] voxelDrops;
 
+        private readonly float[] _accumulation = new float[5]; // 인덱스 = (int)VoxelType
+        public float[] Accumulation => _accumulation;
+
         public override ActionResult Action1(IPlayerContext ctx)
         {
             if (!ctx.PrimaryHeld || !ctx.HasHit) return ActionResult.None;
 
-            Vector3   digPoint = ctx.Hit.point - ctx.Hit.normal * 0.1f;
-            VoxelType dug      = ctx.GetVoxelTypeAt(digPoint);
+            Vector3   digPoint = ctx.Hit.point;
+            VoxelType dug      = VoxelType.Air;
+            for (int i = 1; i <= 10; i++)
+            {
+                digPoint = ctx.Hit.point - ctx.Hit.normal * (i * 0.3f);
+                dug = ctx.GetVoxelTypeAt(digPoint);
+                if (dug != VoxelType.Air) break;
+            }
             if (dug == VoxelType.Air) return ActionResult.None;
 
-            float dugAmount = ctx.ModifyTerrain(digPoint, editRadius, editStrength, VoxelType.Air);
+            float[] dugAmounts = ctx.ModifyTerrain(digPoint, editRadius, editStrength, VoxelType.Air);
+            int     idx        = (int)dug;
+            float   dugAmount  = dugAmounts[idx];
             if (dugAmount <= 0f) return ActionResult.None;
 
-            int idx = (int)dug;
+            _accumulation[idx] += dugAmount / editStrength;
+
+            float threshold = VoxelDatabase.GetDropThreshold(dug);
+            if (_accumulation[idx] < threshold) return ActionResult.Done();
+
+            _accumulation[idx] -= threshold;
+
             if (voxelDrops == null || idx >= voxelDrops.Length || voxelDrops[idx] == null)
                 return ActionResult.Done();
 
-            float normalized = dugAmount / editStrength;
-            int   count      = Mathf.FloorToInt(normalized);
-            if (Random.value < normalized - count) count++;
-            return count > 0 ? ActionResult.Add(voxelDrops[idx], count) : ActionResult.Done();
+            return ActionResult.Add(voxelDrops[idx], 1);
         }
 
         public override ActionResult Action2(IPlayerContext ctx) => ActionResult.None;

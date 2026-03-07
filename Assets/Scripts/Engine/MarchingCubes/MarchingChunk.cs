@@ -61,7 +61,7 @@ namespace BioBreach.Engine.MarchingCubes
         private float _airThreshold     = 0.6f;
         private float _ironThreshold     = 0.62f;
         private float _calciumThreshold  = 0.68f;
-        private float _essenceThreshold  = 0.77f;
+        private float _essenceThreshold  = 0.78f;
 
         // =====================================================================
         // 청크 생성
@@ -106,7 +106,7 @@ namespace BioBreach.Engine.MarchingCubes
                 _voxelTypes[index] = type;
                 if(_voxelTypes[index] == VoxelType.Air)
                 {
-                    _density[index] = MIN_DENSITY;
+                    _density[index] = MAX_DENSITY;
                 }
                 else
                 {
@@ -145,7 +145,7 @@ namespace BioBreach.Engine.MarchingCubes
         private VoxelType DetermineVoxelType(Vector3 seededPos)
         {
             float airNoise = Perlin3D(
-                seededPos.x * 0.04f + 100f,
+                seededPos.x * 0.05f + 100f,
                 seededPos.y * 0.04f + 100f,
                 seededPos.z * 0.04f + 100f
             );
@@ -164,10 +164,11 @@ namespace BioBreach.Engine.MarchingCubes
                 seededPos.y * 0.5f  + 400f,
                 seededPos.z * 0.5f  + 400f
             );
-            if (essenceNoise > _essenceThreshold) return VoxelType.GeneticEssence;
+            // 그려지는 순서
             if (calciumNoise > _calciumThreshold) return VoxelType.Calcium;
-            if (ironNoise    > _ironThreshold)    return VoxelType.Iron;
             if (airNoise > _airThreshold) return VoxelType.Air;
+            if (essenceNoise > _essenceThreshold) return VoxelType.GeneticEssence;
+            if (ironNoise    > _ironThreshold)    return VoxelType.Iron;
             return VoxelType.Protein;
         }
 
@@ -363,17 +364,17 @@ namespace BioBreach.Engine.MarchingCubes
         private const float MAX_DENSITY = 1f;   // 최대 공기
 
         /// <summary>
-        /// 밀도 수정 (파기/설치). 파기 시 실제로 제거된 고체 밀도 합계를 반환.
-        /// 반환값은 항상 0 이상 — 설치나 변화 없을 땐 0.
+        /// 밀도 수정 (파기/설치). 파기 시 VoxelType별 제거된 고체 밀도 합계를 반환.
+        /// 반환 배열 인덱스 = (int)VoxelType. 설치나 변화 없을 땐 모두 0.
         /// falloff: 중심에서 멀수록 약하게 적용.
         /// </summary>
-        public float ModifyDensity(Vector3 worldPoint, float radius, float strength, VoxelType placeType = VoxelType.Air)
+        public float[] ModifyDensity(Vector3 worldPoint, float radius, float strength, VoxelType placeType = VoxelType.Air)
         {
-            if (!_isInitialized) return 0f;
+            if (!_isInitialized) return new float[5];
 
             Vector3 localPoint = worldPoint - _chunkOffset;
-            bool  modified = false;
-            float totalDug = 0f;
+            bool    modified = false;
+            float[] totalDugByType = new float[5];
 
             int radiusVoxels = Mathf.CeilToInt(radius / _voxelSize) + 1;
 
@@ -427,16 +428,16 @@ namespace BioBreach.Engine.MarchingCubes
                     // 밀도 클램프 적용
                     _density[index] = Mathf.Clamp(_density[index], MIN_DENSITY, MAX_DENSITY);
 
-                    // 파기: 고체 영역(density < 0)에서 실제 제거된 양 누적
+                    // 파기: 고체 영역(density < 0)에서 실제 제거된 양을 타입별로 누적
                     if (!isPlacing && before < 0f)
-                        totalDug += Mathf.Max(0f, Mathf.Min(_density[index], 0f) - before);
+                        totalDugByType[(int)_voxelTypes[index]] += Mathf.Max(0f, Mathf.Min(_density[index], 0f) - before);
 
                     modified = true;
                 }
             }
 
             if (modified) GenerateMesh();
-            return totalDug;
+            return totalDugByType;
         }
 
         /// <summary>

@@ -40,21 +40,30 @@ namespace BioBreach.Engine.Inventory
         // =====================================================================
         // 데이터
         // =====================================================================
-        
+
         private InventoryGrid _grid;
-        
+
         // 핫바: 그리드의 ItemInstance를 참조 (null이면 빈 슬롯)
         private ItemInstance[] _hotbar;
         private int _selectedHotbarSlot = 0;
 
+        // 장착 슬롯 (5부위) — 아이템은 그리드에도 유지되고 여기에도 참조됨
+        private readonly ItemInstance[] _equips = new ItemInstance[5];
+
+        /// <summary>장착 슬롯 변경 시 발행. PlayerController가 구독해 스탯을 재계산한다.</summary>
+        public event Action OnEquipmentChanged;
+
         // =====================================================================
         // 프로퍼티
         // =====================================================================
-        
+
         public InventoryGrid Grid          => _grid;
         public ItemInstance[] Hotbar       => _hotbar;
         public int SelectedSlotIndex       => _selectedHotbarSlot;
         public ItemInstance SelectedItem   => _hotbar[_selectedHotbarSlot];
+
+        /// <summary>해당 부위에 현재 장착된 ItemInstance. 비어 있으면 null.</summary>
+        public ItemInstance GetEquipped(Item.EquipSlot slot) => _equips[(int)slot];
 
         // =====================================================================
         // 초기화
@@ -146,6 +155,74 @@ namespace BioBreach.Engine.Inventory
 
         /// <summary>ItemBase + 수량으로 추가 (CraftingRepository에서 결과 아이템 지급용)</summary>
         public bool AddItem(Item.ItemBase data, int count = 1) => TryAddItem(data, count);
+
+        // =====================================================================
+        // 장착 / 해제
+        // =====================================================================
+
+        /// <summary>
+        /// instance를 해당 부위에 장착한다.
+        /// 이미 다른 아이템이 장착되어 있으면 먼저 해제한다.
+        /// 아이템은 그리드에도 유지된 채 장착 슬롯에 추가로 참조된다.
+        /// </summary>
+        public bool TryEquip(ItemInstance instance)
+        {
+            if (instance?.data is not Item.EquippableItem eq) return false;
+
+            int idx = (int)eq.slot;
+            if (_equips[idx] != null)
+                _equips[idx] = null; // 기존 장비 해제 (아이템은 그리드에 잔류)
+
+            _equips[idx] = instance;
+            OnEquipmentChanged?.Invoke();
+            return true;
+        }
+
+        /// <summary>해당 부위 장비를 해제한다. 아이템은 그리드에 그대로 유지.</summary>
+        public bool TryUnequip(Item.EquipSlot slot)
+        {
+            int idx = (int)slot;
+            if (_equips[idx] == null) return false;
+            _equips[idx] = null;
+            OnEquipmentChanged?.Invoke();
+            return true;
+        }
+
+        /// <summary>모든 부위의 장비 보너스 합산을 반환한다.</summary>
+        public void GetEquipBonuses(out float hpBonus, out float speedBonus, out float jumpBonus)
+        {
+            hpBonus = 0f; speedBonus = 0f; jumpBonus = 0f;
+            foreach (var inst in _equips)
+            {
+                if (inst?.data is Item.EquippableItem eq)
+                {
+                    hpBonus    += eq.hpBonus;
+                    speedBonus += eq.moveSpeedBonus;
+                    jumpBonus  += eq.jumpHeightBonus;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 스택을 splitAmount만큼 분할해 새 슬롯에 배치한다. (InventoryGrid.TrySplit 래퍼)
+        /// </summary>
+        public ItemInstance TrySplitItem(ItemInstance source, int splitAmount)
+            => _grid.TrySplit(source, splitAmount);
+
+        /// <summary>
+        /// 같은 dataId 두 스택을 합친다. from이 소진되면 핫바 참조도 정리한다. (InventoryGrid.TryMerge 래퍼)
+        /// </summary>
+        public bool TryMergeItem(ItemInstance from, ItemInstance to)
+        {
+            int merged = _grid.TryMerge(from, to);
+            // from이 그리드에서 사라졌으면 핫바 참조 제거
+            if (merged > 0 && from.count <= 0)
+            {
+                for (int i = 0; i < _hotbar.Length; i++)
+                    if (_hotbar[i] == from) _hotbar[i] = null;
+            }
+            return merged > 0;
+        }
 
         // =====================================================================
         // 핫바 관리

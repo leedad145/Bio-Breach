@@ -1,9 +1,11 @@
 // =============================================================================
 // PlayerController.cs - 1인칭 플레이어 컨트롤러
 // =============================================================================
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Netcode;
+using BioBreach.Engine.Entity;
 using BioBreach.Engine.Inventory;
 using BioBreach.Core.Voxel;
 using BioBreach.Systems;
@@ -14,7 +16,7 @@ namespace BioBreach.Controller.Player
     [RequireComponent(typeof(CharacterController))]
     [RequireComponent(typeof(PlayerInventory))]
     [RequireComponent(typeof(PlacementPreview))]
-    public class PlayerController : NetworkBehaviour, IPlayerContext
+    public class PlayerController : EntityMonoBehaviour, IPlayerContext
     {
         // =====================================================================
         // Inspector 설정
@@ -78,12 +80,26 @@ namespace BioBreach.Controller.Player
 
         private float _lastActionTime = -999f;
 
+        // 스탯 기준값 (Inspector에서 설정된 원본 값 — 장비 보너스 계산 기준)
+        private float _baseMoveSpeed;
+        private float _baseJumpHeight;
+
+        // 임시 버프 누적값
+        private float _speedBuff;
+        private float _jumpBuff;
+
+        // 채굴 HUD 스타일 캐시
+        private GUIStyle _minerHudStyle;
+
         // 매 프레임 캐시
         private bool       _cachedHitValid;
         private RaycastHit _cachedHit;
         private bool       _primaryDown, _primaryHeld, _secondaryDown, _secondaryHeld;
 
         public bool UIBlocked { get; set; } = false;
+
+        // SendMessage 경유 호출 (Systems 어셈블리의 SkillTreeTrigger 등이 사용)
+        void SetUIBlocked(bool blocked) => UIBlocked = blocked;
 
         // =====================================================================
         // 네트워크 동기화 변수 (Owner가 쓰고 나머지가 읽는다)
@@ -126,11 +142,65 @@ namespace BioBreach.Controller.Player
             return VoxelType.Air;
         }
 
-        public float ModifyTerrain(Vector3 pos, float radius, float strength, VoxelType type)
-            => worldManager != null ? worldManager.ModifyTerrain(pos, radius, strength, type) : 0f;
+        public float[] ModifyTerrain(Vector3 pos, float radius, float strength, VoxelType type)
+            => worldManager != null ? worldManager.ModifyTerrain(pos, radius, strength, type) : new float[5];
 
-        public void AddMoveSpeed(float v)  => moveSpeed  += v;
-        public void AddJumpHeight(float v) => jumpHeight += v;
+        // 공개 스탯 프로퍼티 (InventoryUI에서 분해 표시용)
+        public float BaseMoveSpeed  => _baseMoveSpeed;
+        public float BaseJumpHeight => _baseJumpHeight;
+        public float BuffSpeed      => _speedBuff;
+        public float BuffJump       => _jumpBuff;
+        public float SkillSpeedBonus => BioBreach.Systems.PlayerSkillData.Instance?.TotalSpeedBonus ?? 0f;
+        public float SkillJumpBonus  => BioBreach.Systems.PlayerSkillData.Instance?.TotalJumpBonus  ?? 0f;
+        public float SkillHpBonus    => BioBreach.Systems.PlayerSkillData.Instance?.TotalHpBonus    ?? 0f;
+
+        public void AddMoveSpeed(float v, float duration = 0f)
+        {
+            _speedBuff += v;
+            RecalculateStats();
+            if (duration > 0f) StartCoroutine(RevertBuff(v, 0f, duration));
+        }
+
+        public void AddJumpHeight(float v, float duration = 0f)
+        {
+            _jumpBuff += v;
+            RecalculateStats();
+            if (duration > 0f) StartCoroutine(RevertBuff(0f, v, duration));
+        }
+
+        private IEnumerator RevertBuff(float speedAmount, float jumpAmount, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            _speedBuff -= speedAmount;
+            _jumpBuff  -= jumpAmount;
+            RecalculateStats();
+        }
+
+        /// <summary>현재 선택된 핫바 아이템을 장착한다. EquippableItem.Action1 → IPlayerContext.EquipSelectedItem 경로로 호출됨.</summary>
+        public void EquipSelectedItem()
+        {
+            var inst = _inventory?.SelectedItem;
+            if (inst != null) _inventory.TryEquip(inst);
+        }
+
+        /// <summary>장비 슬롯 / 버프 / 스킬 변경 시 moveSpeed·jumpHeight·maxHpBonus를 재계산한다.</summary>
+        private void RecalculateStats()
+        {
+            if (_inventory == null) return;
+            _inventory.GetEquipBonuses(out float hpBonus, out float speedBonus, out float jumpBonus);
+
+            float skillSpeed = SkillSpeedBonus;
+            float skillJump  = SkillJumpBonus;
+            float skillHp    = SkillHpBonus;
+
+            moveSpeed  = _baseMoveSpeed  + speedBonus + _speedBuff + skillSpeed;
+            jumpHeight = _baseJumpHeight + jumpBonus  + _jumpBuff  + skillJump;
+            maxHpBonus = hpBonus + skillHp;
+
+            // 현재 HP가 새 MaxHp를 초과할 경우 서버에서 강제 감소
+            if (IsServer && CurrentHp > MaxHp)
+                TakeDamage(CurrentHp - MaxHp);
+        }
 
         public void SpawnObject(GameObject prefab, Vector3 pos, Quaternion rot)
         {
@@ -199,11 +269,36 @@ namespace BioBreach.Controller.Player
         // 초기화
         // =====================================================================
 
+        // =====================================================================
+        // 사망 처리 — 즉시 부활 (기본 Despawn 방지)
+        // =====================================================================
+
+        protected override void HandleDeath()
+        {
+            if (!IsServer) return;
+            // 플레이어는 Despawn하지 않고 즉시 부활 (추후 게임 오버/대기 로직으로 교체 가능)
+            Heal(MaxHp);
+        }
+
         public override void OnNetworkSpawn()
         {
+            base.OnNetworkSpawn(); // EntityMonoBehaviour HP 초기화 (NetworkVariable 구독 포함)
+
             _controller = GetComponent<CharacterController>();
             _inventory  = GetComponent<PlayerInventory>();
             _preview    = GetComponent<PlacementPreview>();
+
+            // 스탯 기준값 저장 (Inspector 설정값 → 장비 보너스의 기반)
+            _baseMoveSpeed  = moveSpeed;
+            _baseJumpHeight = jumpHeight;
+
+            // 장비 변경 / 스킬 해제 시 스탯 재계산 구독 (Owner만)
+            if (IsOwner)
+            {
+                _inventory.OnEquipmentChanged += RecalculateStats;
+                BioBreach.Systems.PlayerSkillData.OnSkillChanged += RecalculateStats;
+                RecalculateStats(); // 스킬 보너스 즉시 반영
+            }
 
             _camera    = GetComponentInChildren<Camera>();
             _spotLight = GetComponentInChildren<Light>();
@@ -262,6 +357,10 @@ namespace BioBreach.Controller.Player
 
         public override void OnNetworkDespawn()
         {
+            base.OnNetworkDespawn(); // EntityMonoBehaviour NetworkVariable 구독 해제
+            if (_inventory != null)
+                _inventory.OnEquipmentChanged -= RecalculateStats;
+            BioBreach.Systems.PlayerSkillData.OnSkillChanged -= RecalculateStats;
             worldManager?.UnregisterViewer(transform);
         }
 
@@ -466,15 +565,68 @@ namespace BioBreach.Controller.Player
         // 디버그 UI
         // =====================================================================
 
+        void DrawMinerHUD(UniversalMiner miner)
+        {
+            if (_minerHudStyle == null)
+            {
+                _minerHudStyle = new GUIStyle(GUI.skin.label) { fontSize = 10 };
+                _minerHudStyle.normal.textColor = Color.white;
+            }
+
+            string[] names = { "", "단백질", "철분", "칼슘", "유전자정수" };
+            var acc   = miner.Accumulation;
+            float rowH    = 15f;
+            float panelW  = 165f;
+            float panelH  = rowH + 4 * (rowH + 2) + 8f;
+            float px      = Screen.width  - panelW - 12f;
+            float py      = Screen.height - panelH - 120f;
+
+            GUI.color = new Color(0f, 0f, 0f, 0.55f);
+            GUI.DrawTexture(new Rect(px - 4, py - 4, panelW + 8, panelH + 8), Texture2D.whiteTexture);
+
+            GUI.color = new Color(0.7f, 0.9f, 1.0f);
+            GUI.Label(new Rect(px, py, panelW, rowH), "채굴 진행도", _minerHudStyle);
+
+            for (int i = 1; i <= 4; i++)
+            {
+                float ry        = py + rowH + (i - 1) * (rowH + 2);
+                float progress  = acc[i];
+                float threshold = BioBreach.Core.Voxel.VoxelDatabase.GetDropThreshold((BioBreach.Core.Voxel.VoxelType)i);
+                float pct       = threshold > 0f ? Mathf.Clamp01(progress / threshold) : 0f;
+                float barX      = px + 58f;
+                float barW      = panelW - 62f;
+
+                GUI.color = new Color(0.18f, 0.18f, 0.18f, 0.8f);
+                GUI.DrawTexture(new Rect(barX, ry + 2, barW, rowH - 4), Texture2D.whiteTexture);
+                if (pct > 0f)
+                {
+                    GUI.color = new Color(0.3f, 0.8f, 0.4f, 0.9f);
+                    GUI.DrawTexture(new Rect(barX, ry + 2, barW * pct, rowH - 4), Texture2D.whiteTexture);
+                }
+
+                GUI.color = Color.white;
+                GUI.Label(new Rect(px, ry, 58f, rowH), names[i], _minerHudStyle);
+                GUI.Label(new Rect(barX + barW - 48f, ry, 50f, rowH),
+                          $"{(int)progress}/{(int)threshold}", _minerHudStyle);
+            }
+            GUI.color = Color.white;
+        }
+
         void OnGUI()
         {
-            if (!IsOwner || !showDebugUI) return;
+            if (!IsOwner) return;
             if (_inventory == null) return;
 
             int cx = Screen.width / 2, cy = Screen.height / 2;
             GUI.color = Color.white;
             GUI.DrawTexture(new Rect(cx - 20, cy - 1, 40, 2), Texture2D.whiteTexture);
             GUI.DrawTexture(new Rect(cx - 1, cy - 20, 2, 40), Texture2D.whiteTexture);
+
+            // 채굴 HUD — UniversalMiner 들고 있을 때 항상 표시
+            var minerData = _inventory.SelectedItem?.data as UniversalMiner;
+            if (minerData != null) DrawMinerHUD(minerData);
+
+            if (!showDebugUI) return;
 
             var sel = _inventory.SelectedItem;
             if (sel != null)

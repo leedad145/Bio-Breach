@@ -35,6 +35,15 @@ namespace BioBreach.Systems
                 State = GameState.Connected;
         }
 
+        /// <summary>게임 중 모든 플레이어가 대기실로 돌아갈 때 호출</summary>
+        public void ReturnToWaitingRoom()
+        {
+            if (State == GameState.InGamePlaying
+             || State == GameState.InGameInitialized
+             || State == GameState.InGameInitializing)
+                State = GameState.WaitingRoom;
+        }
+
         private void Awake()
         {
             // Bootstrap 씬에서 살아남아 Title/Game 씬 전환 후에도 유지

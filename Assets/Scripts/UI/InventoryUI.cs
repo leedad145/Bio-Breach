@@ -14,9 +14,10 @@ using BioBreach.Engine.Item;
 using BioBreach.Engine.Data;
 using BioBreach.Controller.Player;
 using BioBreach.Controller.Matriarch;
+using BioBreach.Systems;
 
 
-namespace MarchingCubesProject.Player
+namespace BioBreach.UI
 {
     [RequireComponent(typeof(PlayerInventory))]
     public class InventoryUI : MonoBehaviour
@@ -87,11 +88,19 @@ namespace MarchingCubesProject.Player
         // ── 조합 패널 ──────────────────────────────────────────────────────────
         private MatriarchCraftingStation _station;
         private Vector2                  _craftScroll;
-        private const int CraftW = 320;
-        private const int CraftGap = 8; // 인벤토리 창과의 간격
+        private const int CraftW   = 320;
+        private const int CraftGap = 8;  // 인벤토리 창과의 간격
 
-        private const int TitleH  = 28;
-        private const int Padding  = 10;
+        // ── 장비 패널 ────────────────────────────────────────────────────────────
+        private const int EquipW        = 106; // 패널 너비
+        private const int EquipSlotH    = 54;  // 슬롯 높이 (부위명 + 아이콘 공간)
+        private const int EquipSlotGap  = 5;
+        private static readonly int EquipPanelH =
+            TitleH + Padding + 5 * (54 + 5) - 5 + Padding; // 타이틀 + 5슬롯
+
+        private const int TitleH      = 28;
+        private const int Padding     = 10;
+        private const int StatsPanelH = 110; // HP 바 + 스탯 (기본/장착/버프/스킬 분해 표시)
 
         // =====================================================================
         // 초기화
@@ -113,7 +122,7 @@ namespace MarchingCubesProject.Player
         }
 
         int WindowW => _inventory.gridColumns * _step + Padding * 2;
-        int WindowH => TitleH + _inventory.gridRows * _step + Padding * 2;
+        int WindowH => TitleH + _inventory.gridRows * _step + Padding * 2 + StatsPanelH;
 
         // =====================================================================
         // Update — 키 입력 & 드래그 추적
@@ -196,7 +205,13 @@ namespace MarchingCubesProject.Player
             // 그리드
             DrawGrid();
 
-            // 조합 패널 (Matriarch 범위 안일 때)
+            // 스탯 패널 (인벤토리 창 하단)
+            DrawStats();
+
+            // 장비 슬롯 패널 (인벤토리 창 오른쪽)
+            DrawEquipPanel();
+
+            // 조합 패널 (Matriarch 범위 안일 때, 장비 패널 오른쪽)
             if (_station != null && _station.IsLocalPlayerInRange)
                 DrawCraftingPanel();
 
@@ -256,6 +271,81 @@ namespace MarchingCubesProject.Player
                 GUI.color = new Color(1f, 1f, 0.4f, 0.9f);
                 GUI.Label(new Rect(win.x + win.width - 110, win.y + 6, 90, 20), "R: 회전", _sTitle);
             }
+            GUI.color = Color.white;
+        }
+
+        // =====================================================================
+        // 스탯 패널 (인벤토리 창 하단)
+        // =====================================================================
+
+        void DrawStats()
+        {
+            if (_controller == null) return;
+
+            float panelY = windowY + TitleH + Padding + _inventory.gridRows * _step + Padding;
+            float panelX = windowX + Padding;
+            float panelW = WindowW - Padding * 2;
+
+            // 구분선
+            GUI.color = colWindowBorder;
+            GUI.DrawTexture(new Rect(windowX, panelY - 2f, WindowW, 1f), Texture2D.whiteTexture);
+
+            // ── HP 바 ──
+            float curHp  = _controller.CurrentHp;
+            float maxHp  = _controller.MaxHp;
+            float ratio  = maxHp > 0f ? Mathf.Clamp01(curHp / maxHp) : 0f;
+
+            GUI.color = new Color(0.70f, 0.70f, 0.75f);
+            GUI.Label(new Rect(panelX, panelY + 4f, 26f, 16f), "HP", _sLabel);
+
+            Rect barBg = new Rect(panelX + 26f, panelY + 6f, panelW - 26f, 14f);
+            GUI.color = new Color(0.14f, 0.07f, 0.07f, 0.95f);
+            GUI.DrawTexture(barBg, Texture2D.whiteTexture);
+
+            if (ratio > 0f)
+            {
+                GUI.color = Color.Lerp(new Color(0.85f, 0.15f, 0.15f), new Color(0.15f, 0.78f, 0.32f), ratio);
+                GUI.DrawTexture(new Rect(barBg.x, barBg.y, barBg.width * ratio, barBg.height), Texture2D.whiteTexture);
+            }
+
+            GUI.color = Color.white;
+            GUI.Label(new Rect(barBg.x + 4f, barBg.y, barBg.width - 8f, barBg.height),
+                      $"{curHp:F0} / {maxHp:F0}", _sLabel);
+
+            // ── 이동 / 점프 스탯 (기본 + 장착 + 버프 + 스킬 = 최종) ──
+            _inventory.GetEquipBonuses(out _, out float equipSpeed, out float equipJump);
+            float buffSpeed  = _controller.BuffSpeed;
+            float buffJump   = _controller.BuffJump;
+            float skillSpeed = _controller.SkillSpeedBonus;
+            float skillJump  = _controller.SkillJumpBonus;
+            float baseSpeed  = _controller.BaseMoveSpeed;
+            float baseJump   = _controller.BaseJumpHeight;
+
+            GUI.color = new Color(0.65f, 0.72f, 0.82f);
+            // 이동 — 1행: 기본+장착, 2행: 버프+스킬=최종
+            GUI.Label(new Rect(panelX, panelY + 26f, panelW, 16f),
+                $"이동  {baseSpeed:F1}(기본) +{equipSpeed:F1}(장착) +{buffSpeed:F1}(버프) +{skillSpeed:F1}(스킬) = {_controller.moveSpeed:F1}", _sLabel);
+
+            // 점프 — 1행: 기본+장착, 2행: 버프+스킬=최종
+            GUI.Label(new Rect(panelX, panelY + 42f, panelW, 16f),
+                $"점프  {baseJump:F1}(기본) +{equipJump:F1}(장착) +{buffJump:F1}(버프) +{skillJump:F1}(스킬) = {_controller.jumpHeight:F1}", _sLabel);
+
+            // ── 상호작용 거리 / 감도 ──
+            float row4Y = panelY + 58f;
+            GUI.Label(new Rect(panelX,                  row4Y, panelW * 0.5f, 16f),
+                      $"감도  {_controller.mouseSensitivity:F1}", _sLabel);
+            GUI.Label(new Rect(panelX + panelW * 0.5f, row4Y, panelW * 0.5f, 16f),
+                      $"사거리  {_controller.interactDistance:F0}", _sLabel);
+
+            // ── 스킬 포인트 잔여 ──
+            var skillData = PlayerSkillData.Instance;
+            if (skillData != null)
+            {
+                GUI.color = new Color(0.9f, 0.8f, 0.3f);
+                GUI.Label(new Rect(panelX, panelY + 74f, panelW, 16f),
+                    $"스킬 포인트  {skillData.SkillPoints}pt  (F키: 스킬 트리)", _sLabel);
+            }
+
             GUI.color = Color.white;
         }
 
@@ -346,17 +436,36 @@ namespace MarchingCubesProject.Player
 
         void HandleGridInput(int cols, int rows, Vector2Int hoverCell)
         {
-            if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
+            bool inHoverCell = hoverCell.x >= 0 && hoverCell.x < cols &&
+                               hoverCell.y >= 0 && hoverCell.y < rows;
+
+            // ── 좌클릭: 드래그 시작 ──
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 0
+                && inHoverCell && _dragging == null)
             {
-                // 그리드 범위 내 클릭
-                if (hoverCell.x >= 0 && hoverCell.x < cols &&
-                    hoverCell.y >= 0 && hoverCell.y < rows && _dragging == null)
+                var item = _inventory.Grid.GetAt(hoverCell);
+                if (item != null)
                 {
-                    var item = _inventory.Grid.GetAt(hoverCell);
-                    if (item != null)
+                    _dragging        = item;
+                    _draggingRotated = item.isRotated;
+                    _dragFromHotbar  = false;
+                    _dragHotbarSlot  = -1;
+                    Event.current.Use();
+                }
+            }
+
+            // ── 우클릭: 스택 분할 (절반을 새 슬롯으로 꺼내 드래그) ──
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 1
+                && inHoverCell && _dragging == null)
+            {
+                var item = _inventory.Grid.GetAt(hoverCell);
+                if (item != null && item.count > 1)
+                {
+                    var split = _inventory.TrySplitItem(item, item.count / 2);
+                    if (split != null)
                     {
-                        _dragging        = item;
-                        _draggingRotated = item.isRotated;
+                        _dragging        = split;
+                        _draggingRotated = split.isRotated;
                         _dragFromHotbar  = false;
                         _dragHotbarSlot  = -1;
                         Event.current.Use();
@@ -364,20 +473,29 @@ namespace MarchingCubesProject.Player
                 }
             }
 
+            // ── 좌클릭 놓기: 합치기 or 이동 ──
             if (Event.current.type == EventType.MouseUp && Event.current.button == 0 && _dragging != null)
             {
-                // 그리드 위에 놓기
                 int pw = _draggingRotated ? _dragging.data.gridHeight : _dragging.data.gridWidth;
                 int ph = _draggingRotated ? _dragging.data.gridWidth  : _dragging.data.gridHeight;
                 int sx = hoverCell.x - pw / 2;
                 int sy = hoverCell.y - ph / 2;
 
-                bool inGrid = hoverCell.x >= 0 && hoverCell.x < cols &&
-                              hoverCell.y >= 0 && hoverCell.y < rows;
-
-                if (inGrid)
+                if (inHoverCell)
                 {
-                    _inventory.Grid.TryMove(_dragging, new Vector2Int(sx, sy), _draggingRotated);
+                    var targetItem = _inventory.Grid.GetAt(hoverCell);
+
+                    // 같은 dataId → 합치기 시도
+                    if (targetItem != null && targetItem != _dragging
+                        && targetItem.data.dataId == _dragging.data.dataId)
+                    {
+                        _inventory.TryMergeItem(_dragging, targetItem);
+                    }
+                    else
+                    {
+                        _inventory.Grid.TryMove(_dragging, new Vector2Int(sx, sy), _draggingRotated);
+                    }
+
                     CancelDrag();
                     Event.current.Use();
                 }
@@ -495,7 +613,10 @@ namespace MarchingCubesProject.Player
         {
             var  d   = item.data;
             int  tw  = 210;
-            int  th  = 110;
+            int  th  = d is EquippableItem eq3
+                       ? 110 + (eq3.hpBonus > 0 ? 16 : 0) + (eq3.moveSpeedBonus > 0 ? 16 : 0)
+                             + (eq3.jumpHeightBonus > 0 ? 16 : 0) + (eq3.attackDamageBonus > 0 ? 16 : 0) + 50
+                       : 110;
             float tx = Mathf.Min(pos.x, Screen.width  - tw - 6);
             float ty = Mathf.Min(pos.y, Screen.height - th - 6);
             Rect tr  = new Rect(tx, ty, tw, th);
@@ -529,7 +650,26 @@ namespace MarchingCubesProject.Player
 
             GUI.color = Color.white;
             GUI.Label(new Rect(tx + 8, ly, tw - 16, 18),
-                $"수량  {item.count} / {d.maxStack}", _sTooltip);
+                $"수량  {item.count} / {d.maxStack}", _sTooltip); ly += 20;
+
+            // 장비 보너스 표시
+            if (d is EquippableItem eq)
+            {
+                GUI.color = new Color(0.55f, 0.85f, 1.00f);
+                GUI.Label(new Rect(tx + 8, ly, tw - 16, 16),
+                    $"부위: {eq.slot.DisplayName()}", _sTooltip); ly += 16;
+
+                GUI.color = new Color(0.60f, 1.00f, 0.60f);
+                if (eq.hpBonus          > 0) { GUI.Label(new Rect(tx + 8, ly, tw - 16, 16), $"HP  +{eq.hpBonus:F0}", _sTooltip);          ly += 16; }
+                if (eq.moveSpeedBonus   > 0) { GUI.Label(new Rect(tx + 8, ly, tw - 16, 16), $"이동속도  +{eq.moveSpeedBonus:F1}", _sTooltip);  ly += 16; }
+                if (eq.jumpHeightBonus  > 0) { GUI.Label(new Rect(tx + 8, ly, tw - 16, 16), $"점프력  +{eq.jumpHeightBonus:F1}", _sTooltip);   ly += 16; }
+                if (eq.attackDamageBonus > 0){ GUI.Label(new Rect(tx + 8, ly, tw - 16, 16), $"공격력  +{eq.attackDamageBonus:F1}", _sTooltip); ly += 16; }
+
+                bool isEquipped = _inventory.GetEquipped(eq.slot)?.data == eq;
+                GUI.color = isEquipped ? Color.yellow : new Color(0.7f, 0.7f, 0.7f);
+                GUI.Label(new Rect(tx + 8, ly, tw - 16, 16),
+                    isEquipped ? "▶ 장착 중" : "[좌클릭] 장착  [드래그→슬롯] 장착", _sTooltip);
+            }
 
             if (IsHotbarAssigned(item))
             {
@@ -697,9 +837,114 @@ namespace MarchingCubesProject.Player
         // 조합 패널 (인벤토리 창 오른쪽에 표시)
         // =====================================================================
 
+        // =====================================================================
+        // 장비 슬롯 패널 (인벤토리 창 오른쪽)
+        // =====================================================================
+
+        void DrawEquipPanel()
+        {
+            int ex = windowX + WindowW + CraftGap;
+            int ey = windowY;
+
+            // 배경
+            GUI.color = colWindowBg;
+            GUI.DrawTexture(new Rect(ex, ey, EquipW, EquipPanelH), Texture2D.whiteTexture);
+            GUI.color = colWindowBorder;
+            DrawBorder(new Rect(ex, ey, EquipW, EquipPanelH), 1);
+
+            // 타이틀 바
+            GUI.color = colTitleBar;
+            GUI.DrawTexture(new Rect(ex, ey, EquipW, TitleH), Texture2D.whiteTexture);
+            GUI.color = colWindowBorder;
+            DrawBorderBottom(new Rect(ex, ey, EquipW, TitleH), 1);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(ex + 8, ey + 6, EquipW - 16, 20), "<b>장착</b>", _sTitle);
+
+            // 5 슬롯
+            for (int i = 0; i < 5; i++)
+            {
+                var slotType  = (EquipSlot)i;
+                var equipped  = _inventory.GetEquipped(slotType);
+                float sy      = ey + TitleH + Padding + i * (EquipSlotH + EquipSlotGap);
+                Rect  slotRect = new Rect(ex + Padding, sy, EquipW - Padding * 2, EquipSlotH);
+
+                // 슬롯 강조 (드래그 중인 아이템이 이 슬롯에 맞을 때)
+                bool canDrop = _dragging != null &&
+                               _dragging.data is EquippableItem eq2 &&
+                               (int)eq2.slot == i;
+                GUI.color = canDrop ? colCanDrop :
+                            equipped != null ? colOccupied : colEmpty;
+                GUI.DrawTexture(slotRect, Texture2D.whiteTexture);
+
+                GUI.color = colWindowBorder;
+                DrawBorder(slotRect, 1);
+
+                // 부위 레이블
+                GUI.color = new Color(0.55f, 0.55f, 0.60f);
+                GUI.Label(new Rect(slotRect.x + 3, slotRect.y + 2, slotRect.width - 6, 14),
+                          slotType.DisplayName(), _sLabel);
+
+                if (equipped != null)
+                {
+                    // 아이콘 영역 (레이블 아래)
+                    Rect iconRect = new Rect(slotRect.x + 2, slotRect.y + 16,
+                                            slotRect.width - 4, slotRect.height - 18);
+                    DrawItemContent(iconRect, equipped, true);
+
+                    if (iconRect.Contains(_mousePos) && _dragging == null)
+                    {
+                        _tooltipItem = equipped;
+                        _tooltipPos  = _mousePos + new Vector2(14, 14);
+                    }
+                }
+
+                GUI.color = Color.white;
+                HandleEquipSlotInput(slotType, slotRect, equipped);
+            }
+        }
+
+        void HandleEquipSlotInput(EquipSlot slot, Rect slotRect, ItemInstance current)
+        {
+            var evType = Event.current.type;
+
+            // 우클릭: 장착 해제
+            if (evType == EventType.MouseDown && Event.current.button == 1 &&
+                slotRect.Contains(_mousePos) && current != null)
+            {
+                _inventory.TryUnequip(slot);
+                Event.current.Use();
+                return;
+            }
+
+            // 좌클릭: 장착된 아이템을 드래그로 꺼내기 (해제 후 드래그)
+            if (evType == EventType.MouseDown && Event.current.button == 0 &&
+                slotRect.Contains(_mousePos) && current != null && _dragging == null)
+            {
+                _inventory.TryUnequip(slot);
+                _dragging        = current;
+                _draggingRotated = current.isRotated;
+                _dragFromHotbar  = false;
+                _dragHotbarSlot  = -1;
+                Event.current.Use();
+                return;
+            }
+
+            // 드래그 중인 아이템을 이 슬롯에 드롭 → 장착
+            if (evType == EventType.MouseUp && Event.current.button == 0 &&
+                slotRect.Contains(_mousePos) && _dragging != null)
+            {
+                if (_dragging.data is EquippableItem eq && eq.slot == slot)
+                {
+                    _inventory.TryEquip(_dragging);
+                    CancelDrag();
+                    Event.current.Use();
+                }
+            }
+        }
+
         void DrawCraftingPanel()
         {
-            int px    = windowX + WindowW + CraftGap;
+            int px    = windowX + WindowW + CraftGap + EquipW + CraftGap;
             int py    = windowY;
             int ph    = WindowH;
             Rect win  = new Rect(px, py, CraftW, ph);

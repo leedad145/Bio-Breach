@@ -30,12 +30,12 @@ namespace BioBreach.Engine.Item
                     Debug.Log($"[Usable] 체력 {effectValue} 회복");
                     break;
                 case UsableEffect.SpeedBoost:
-                    ctx.AddMoveSpeed(effectValue);
-                    Debug.Log($"[Usable] 이속 +{effectValue}");
+                    ctx.AddMoveSpeed(effectValue, effectDuration);
+                    Debug.Log($"[Usable] 이속 +{effectValue} ({effectDuration}s)");
                     break;
                 case UsableEffect.JumpBoost:
-                    ctx.AddJumpHeight(effectValue);
-                    Debug.Log($"[Usable] 점프 +{effectValue}");
+                    ctx.AddJumpHeight(effectValue, effectDuration);
+                    Debug.Log($"[Usable] 점프 +{effectValue} ({effectDuration}s)");
                     break;
             }
             return ActionResult.Consume(1);

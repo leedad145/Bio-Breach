@@ -222,5 +222,73 @@ namespace BioBreach.Engine.Inventory
                     if (_grid[x, y] == instance)
                         _grid[x, y] = null;
         }
+
+        // =====================================================================
+        // 분할 / 합치기
+        // =====================================================================
+
+        /// <summary>
+        /// 스택을 splitAmount만큼 분할해 새 ItemInstance를 그리드 빈 자리에 배치한다.
+        /// 빈 자리가 없으면 null 반환 (원본 스택은 변경되지 않음).
+        /// </summary>
+        public ItemInstance TrySplit(ItemInstance source, int splitAmount)
+        {
+            if (source == null || source.count <= 1) return null;
+            int take = Mathf.Clamp(splitAmount, 1, source.count - 1);
+
+            int w = source.isRotated ? source.data.gridHeight : source.data.gridWidth;
+            int h = source.isRotated ? source.data.gridWidth  : source.data.gridHeight;
+
+            for (int rotPass = 0; rotPass < 2; rotPass++)
+            {
+                bool rotated = rotPass == 1;
+                int rw = rotated ? source.data.gridHeight : source.data.gridWidth;
+                int rh = rotated ? source.data.gridWidth  : source.data.gridHeight;
+
+                for (int cy = 0; cy <= Rows - rh; cy++)
+                {
+                    for (int cx = 0; cx <= Columns - rw; cx++)
+                    {
+                        var pos = new Vector2Int(cx, cy);
+                        // 원본 위치와 겹치면 스킵 (같은 아이템을 ignore로 처리)
+                        if (!CanPlace(rw, rh, pos, ignore: source)) continue;
+                        // 원본과 완전히 같은 위치·크기면 스킵 (이동이 아닌 분할이므로)
+                        if (pos == source.gridPos && rotated == source.isRotated) continue;
+
+                        source.count -= take;
+                        var newInst = new ItemInstance(source.data, take, pos, rotated);
+                        _items.Add(newInst);
+                        FillGrid(newInst, pos);
+                        return newInst;
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 같은 dataId 아이템 두 스택을 합친다 (maxStack 상한 적용).
+        /// from이 소진되면 그리드에서 제거한다.
+        /// 반환값: 실제로 합쳐진 수량 (0이면 실패).
+        /// </summary>
+        public int TryMerge(ItemInstance from, ItemInstance to)
+        {
+            if (from == null || to == null || from == to) return 0;
+            if (from.data.dataId != to.data.dataId) return 0;
+
+            int canTake = to.data.maxStack - to.count;
+            if (canTake <= 0) return 0;
+
+            int take = Mathf.Min(canTake, from.count);
+            to.count   += take;
+            from.count -= take;
+
+            if (from.count <= 0)
+            {
+                ClearGrid(from);
+                _items.Remove(from);
+            }
+            return take;
+        }
     }
 }

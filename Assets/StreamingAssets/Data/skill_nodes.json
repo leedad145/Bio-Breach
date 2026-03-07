@@ -1,0 +1,101 @@
+[
+  {
+    "id": "speed_1",
+    "displayName": "이동속도 I",
+    "description": "이동속도 +1.0",
+    "statType": "MoveSpeed",
+    "bonusValue": 1.0,
+    "prerequisiteId": "",
+    "cost": 1,
+    "treeColumn": 0,
+    "treeRow": 0
+  },
+  {
+    "id": "speed_2",
+    "displayName": "이동속도 II",
+    "description": "이동속도 +1.5",
+    "statType": "MoveSpeed",
+    "bonusValue": 1.5,
+    "prerequisiteId": "speed_1",
+    "cost": 2,
+    "treeColumn": 0,
+    "treeRow": 1
+  },
+  {
+    "id": "speed_3",
+    "displayName": "이동속도 III",
+    "description": "이동속도 +2.0",
+    "statType": "MoveSpeed",
+    "bonusValue": 2.0,
+    "prerequisiteId": "speed_2",
+    "cost": 3,
+    "treeColumn": 0,
+    "treeRow": 2
+  },
+  {
+    "id": "jump_1",
+    "displayName": "점프력 I",
+    "description": "점프력 +0.5",
+    "statType": "JumpHeight",
+    "bonusValue": 0.5,
+    "prerequisiteId": "",
+    "cost": 1,
+    "treeColumn": 1,
+    "treeRow": 0
+  },
+  {
+    "id": "jump_2",
+    "displayName": "점프력 II",
+    "description": "점프력 +0.8",
+    "statType": "JumpHeight",
+    "bonusValue": 0.8,
+    "prerequisiteId": "jump_1",
+    "cost": 2,
+    "treeColumn": 1,
+    "treeRow": 1
+  },
+  {
+    "id": "jump_3",
+    "displayName": "점프력 III",
+    "description": "점프력 +1.2",
+    "statType": "JumpHeight",
+    "bonusValue": 1.2,
+    "prerequisiteId": "jump_2",
+    "cost": 3,
+    "treeColumn": 1,
+    "treeRow": 2
+  },
+  {
+    "id": "hp_1",
+    "displayName": "체력 I",
+    "description": "최대 HP +20",
+    "statType": "MaxHp",
+    "bonusValue": 20.0,
+    "prerequisiteId": "",
+    "cost": 1,
+    "treeColumn": 2,
+    "treeRow": 0
+  },
+  {
+    "id": "hp_2",
+    "displayName": "체력 II",
+    "description": "최대 HP +30",
+    "statType": "MaxHp",
+    "bonusValue": 30.0,
+    "prerequisiteId": "hp_1",
+    "cost": 2,
+    "treeColumn": 2,
+    "treeRow": 1
+  },
+  {
+    "id": "hp_3",
+    "displayName": "체력 III",
+    "description": "최대 HP +50",
+    "statType": "MaxHp",
+    "bonusValue": 50.0,
+    "prerequisiteId": "hp_2",
+    "cost": 3,
+    "treeColumn": 2,
+    "treeRow": 2
+  }
+]

@@ -5,17 +5,18 @@
 //  - CharacterController로 물리적 이동 (중력 적용, 지형 충돌)
 //  - WorldManager에 Viewer로 등록 → 주변 1청크 항상 로드
 //  - 이동 경로 앞에 Voxel(MeshCollider) 감지 → 공격으로 제거 후 이동
+//  - NetworkVariable<Vector3/float>로 위치·회전을 서버→클라이언트 동기화
 // =============================================================================
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using VContainer;
 using BioBreach.Engine.Entity;
 using BioBreach.Engine.Data;
 using BioBreach.Systems;
 using BioBreach.Core.Voxel;
+using BioBreach.Controller.Shared;
+using Unity.Netcode;
 
 namespace BioBreach.Controller.Enemy
 {
@@ -55,6 +56,20 @@ namespace BioBreach.Controller.Enemy
         [HideInInspector] public float hpMultiplier     = 1f;
         [HideInInspector] public float damageMultiplier = 1f;
         [HideInInspector] public float speedMultiplier  = 1f;
+
+        // =====================================================================
+        // 네트워크 위치 동기화 (Server → 모든 클라이언트)
+        // =====================================================================
+
+        private readonly NetworkVariable<Vector3> _netPos = new(
+            Vector3.zero,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+
+        private readonly NetworkVariable<float> _netYaw = new(
+            0f,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
 
         // =====================================================================
         // 내부 변수
@@ -105,13 +120,22 @@ namespace BioBreach.Controller.Enemy
 
             _cc = GetComponent<CharacterController>();
 
-            if (!IsServer) return;
+            if (!IsServer)
+            {
+                // 클라이언트는 CharacterController를 끄고 NetworkVariable 위치로만 이동
+                _cc.enabled = false;
+                return;
+            }
 
             if (worldManager == null)
                 worldManager = FindAnyObjectByType<WorldManager>();
 
             // Server만 뷰어 등록 — AI 이동은 Server에서만 실행
             worldManager?.RegisterViewer(transform, 1);
+
+            // 스폰 직후 현재 위치를 기록 (클라이언트가 (0,0,0)에서 튀는 것 방지)
+            _netPos.Value = transform.position;
+            _netYaw.Value = transform.eulerAngles.y;
         }
 
         public override void OnNetworkDespawn()
@@ -127,24 +151,42 @@ namespace BioBreach.Controller.Enemy
 
         void Update()
         {
-            // AI 로직은 Server에서만 실행 (Server-authoritative)
-            if (!IsServer || !IsAlive) return;
+            if (!IsSpawned) return;
 
-            _currentTarget = SelectTarget();
-
-            if (_currentTarget != null)
+            if (IsServer)
             {
-                MoveToward(_currentTarget.transform.position);
-                TryAttack(_currentTarget);
-            }
-            else if (matriarchTarget != null)
-            {
-                MoveToward(matriarchTarget.position);
-                var matriarch = matriarchTarget.GetComponent<EntityMonoBehaviour>();
-                if (matriarch != null) TryAttack(matriarch);
-            }
+                if (!IsAlive) return;
 
-            ApplyGravity();
+                _currentTarget = SelectTarget();
+
+                if (_currentTarget != null)
+                {
+                    MoveToward(_currentTarget.transform.position);
+                    TryAttack(_currentTarget);
+                }
+                else if (matriarchTarget != null)
+                {
+                    MoveToward(matriarchTarget.position);
+                    var matriarch = matriarchTarget.GetComponent<EntityMonoBehaviour>();
+                    if (matriarch != null) TryAttack(matriarch);
+                }
+
+                ApplyGravity();
+
+                // 클라이언트에 위치·회전 동기화
+                _netPos.Value = transform.position;
+                _netYaw.Value = transform.eulerAngles.y;
+            }
+            else
+            {
+                // 클라이언트: 서버 위치·회전으로 보간
+                if (_netPos.Value.sqrMagnitude < 0.001f) return;
+
+                transform.SetPositionAndRotation(
+                    Vector3.Lerp(transform.position, _netPos.Value, Time.deltaTime * 15f),
+                    Quaternion.Slerp(transform.rotation,
+                        Quaternion.Euler(0f, _netYaw.Value, 0f), Time.deltaTime * 15f));
+            }
         }
 
         // =====================================================================
@@ -161,30 +203,11 @@ namespace BioBreach.Controller.Enemy
         }
 
         // =====================================================================
-        // 타겟 선택
+        // 타겟 선택 — TargetSelector 공유 유틸리티 위임
         // =====================================================================
 
         EntityMonoBehaviour SelectTarget()
-        {
-            Collider[] hits = Physics.OverlapSphere(transform.position, detectionRange, defenseLayer);
-
-            var candidates = new List<EntityMonoBehaviour>();
-            foreach (var col in hits)
-            {
-                var e = col.GetComponent<EntityMonoBehaviour>();
-                if (e != null && e.IsAlive)
-                    candidates.Add(e);
-            }
-
-            if (candidates.Count == 0) return null;
-
-            return targetPriority switch
-            {
-                TargetPriority.LowestHp       => candidates.OrderBy(e => e.CurrentHp).First(),
-                TargetPriority.HighestPriority => candidates.OrderByDescending(e => e.priorityScore).First(),
-                _                              => candidates.OrderBy(e => (transform.position - e.transform.position).sqrMagnitude).First(),
-            };
-        }
+            => TargetSelector.FindTarget(transform.position, detectionRange, defenseLayer, targetPriority);
 
         // =====================================================================
         // 이동 & Voxel 장애물 처리

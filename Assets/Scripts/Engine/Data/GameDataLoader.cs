@@ -45,6 +45,7 @@ namespace BioBreach.Engine.Data
             Items.LoadFile(Path.Combine(root, "melee_weapons.json"));
             Items.LoadFile(Path.Combine(root, "universal_miners.json"));
             Items.LoadFile(Path.Combine(root, "raw_materials.json"));
+            Items.LoadFile(Path.Combine(root, "equippables.json")); // 장비 아이템
 
             Crafting.LoadFile(Path.Combine(root, "recipes.json"));
 

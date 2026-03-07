@@ -12,15 +12,17 @@ namespace BioBreach.Core.Voxel
     [System.Serializable]
     public struct VoxelProperty
     {
-        public VoxelType type;      // 복셀 타입
-        public string displayName;  // 표시 이름
-        public float hardness;      // 내구도 (높을수록 파기 어려움, 0 = 파기 불가)
+        public VoxelType type;       // 복셀 타입
+        public string displayName;   // 표시 이름
+        public float hardness;       // 내구도 (높을수록 파기 어려움, 0 = 파기 불가)
+        public float dropThreshold;  // 아이템 1개 획득에 필요한 누적 채굴량
 
-        public VoxelProperty(VoxelType type, string displayName, float hardness)
+        public VoxelProperty(VoxelType type, string displayName, float hardness, float dropThreshold)
         {
-            this.type = type;
-            this.displayName = displayName;
-            this.hardness = hardness;
+            this.type          = type;
+            this.displayName   = displayName;
+            this.hardness      = hardness;
+            this.dropThreshold = dropThreshold;
         }
     }
 }

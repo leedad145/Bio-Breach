@@ -24,10 +24,14 @@ namespace BioBreach.Engine.Item
         public override ActionResult Action1(IPlayerContext ctx)
         {
             if (!ctx.PrimaryHeld || editMode == VoxelEditMode.Add || !ctx.HasHit) return ActionResult.None;
-            Vector3 digPoint = ctx.Hit.point - ctx.Hit.normal * 0.1f;
+            Vector3 digPoint = ctx.Hit.point;
+            for (int i = 1; i <= 10 && ctx.GetVoxelTypeAt(digPoint) == VoxelType.Air; i++)
+                digPoint = ctx.Hit.point - ctx.Hit.normal * (i * 0.3f);
             if (ctx.GetVoxelTypeAt(digPoint) == VoxelType.Air) return ActionResult.None;
 
-            float dugAmount = ctx.ModifyTerrain(digPoint, editRadius, editStrength, VoxelType.Air);
+            float[] dugAmounts = ctx.ModifyTerrain(digPoint, editRadius, editStrength, VoxelType.Air);
+            float   dugAmount  = 0f;
+            foreach (float v in dugAmounts) dugAmount += v;
             if (dugAmount <= 0f) return ActionResult.None;
 
             int count = ProportionalItemCount(dugAmount, editStrength);

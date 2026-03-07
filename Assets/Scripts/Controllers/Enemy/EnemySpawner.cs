@@ -44,6 +44,12 @@ namespace BioBreach.Controller.Enemy
         [Tooltip("이속 스케일링 배율 (HP·공격력보다 느리게 증가시키려면 낮게 설정)")]
         [Min(0f)] public float speedScalingPerSpawn = 0.05f;
 
+        [Header("소환 범위 (Matriarch 기준)")]
+        [Tooltip("최대 소환 반경 (Matriarch 중심)")]
+        [Min(0f)] public float spawnRadius    = 100f;
+        [Tooltip("최소 소환 거리 (Matriarch 중심 — 이 거리 이내에는 소환 안 함)")]
+        [Min(0f)] public float minSpawnRadius = 20f;
+
         [Header("소환 위치 Voxel 제거")]
         [Tooltip("소환 시 주변을 파낼 구의 반경 (0이면 파기 안 함)")]
         [Min(0f)] public float spawnClearRadius   = 5f;
@@ -53,7 +59,7 @@ namespace BioBreach.Controller.Enemy
         [Header("참조")]
         [Tooltip("WorldManager (null이면 자동 탐색)")]
         public WorldManager worldManager;
-        [Tooltip("성체 Transform — 소환된 Enemy에 자동 주입")]
+        [Tooltip("성체 Transform — 소환된 Enemy에 자동 주입 (null이면 이 오브젝트)")]
         public Transform matriarchTarget;
 
         // =====================================================================
@@ -107,12 +113,14 @@ namespace BioBreach.Controller.Enemy
         {
             if (enemyPrefab == null) return;
 
+            Vector3 spawnPos = GetRandomSpawnPosition();
+
             // 1. 소환 위치 주변 Voxel 제거
             if (worldManager != null && spawnClearRadius > 0f)
-                worldManager.ModifyTerrain(transform.position, spawnClearRadius, spawnClearStrength, VoxelType.Air);
+                worldManager.ModifyTerrain(spawnPos, spawnClearRadius, spawnClearStrength, VoxelType.Air);
 
             // 2. Enemy 생성 (Server) + VContainer 의존성 주입
-            var go = Instantiate(enemyPrefab, transform.position, transform.rotation);
+            var go = Instantiate(enemyPrefab, spawnPos, transform.rotation);
             _resolver?.InjectGameObject(go);
 
             // 3. 스케일링 주입 — NetworkSpawn 이전(Start 이전)에 반영되어야 maxHp에 적용됨
@@ -126,8 +134,9 @@ namespace BioBreach.Controller.Enemy
                 enemy.damageMultiplier = scale;
                 enemy.speedMultiplier  = speedScale;
 
-                if (matriarchTarget != null) enemy.matriarchTarget = matriarchTarget;
-                if (worldManager    != null) enemy.worldManager    = worldManager;
+                Transform target = matriarchTarget != null ? matriarchTarget : transform;
+                if (target       != null) enemy.matriarchTarget = target;
+                if (worldManager != null) enemy.worldManager    = worldManager;
             }
 
             // 4. 네트워크에 스폰 — 모든 클라이언트에 오브젝트 생성
@@ -140,12 +149,31 @@ namespace BioBreach.Controller.Enemy
         }
 
         // =====================================================================
+        // 유틸리티
+        // =====================================================================
+
+        Vector3 GetRandomSpawnPosition()
+        {
+            float   angle  = Random.Range(0f, 360f) * Mathf.Deg2Rad;
+            float   dist   = Random.Range(minSpawnRadius, spawnRadius);
+            Vector3 offset = new Vector3(Mathf.Cos(angle) * dist, 0f, Mathf.Sin(angle) * dist);
+            return transform.position + offset;
+        }
+
+        // =====================================================================
         // 기즈모
         // =====================================================================
 
         void OnDrawGizmosSelected()
         {
-            Gizmos.color = new Color(1f, 0.4f, 0f, 0.5f);
+            // 최대 소환 반경
+            Gizmos.color = new Color(1f, 0.4f, 0f, 0.4f);
+            Gizmos.DrawWireSphere(transform.position, spawnRadius);
+            // 최소 소환 거리
+            Gizmos.color = new Color(1f, 0.8f, 0f, 0.4f);
+            Gizmos.DrawWireSphere(transform.position, minSpawnRadius);
+            // Voxel 제거 반경
+            Gizmos.color = new Color(1f, 0.4f, 0f, 0.2f);
             Gizmos.DrawWireSphere(transform.position, spawnClearRadius);
         }
     }
