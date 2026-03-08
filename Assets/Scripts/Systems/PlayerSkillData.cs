@@ -36,7 +36,7 @@ namespace BioBreach.Systems
 
         private static SkillNode[] LoadNodes()
         {
-            string path = Path.Combine(Application.streamingAssetsPath, "Data", "skill_nodes.json");
+            string path = Path.Combine(Application.streamingAssetsPath, "Data", "Progression", "skill_nodes.json");
             if (!File.Exists(path))
             {
                 Debug.LogWarning($"[PlayerSkillData] skill_nodes.json not found: {path}");
@@ -79,8 +79,9 @@ namespace BioBreach.Systems
         {
             if (IsUnlocked(node.id)) return false;
             if (_skillPoints < node.cost) return false;
-            if (!string.IsNullOrEmpty(node.prerequisiteId) && !IsUnlocked(node.prerequisiteId))
-                return false;
+            if (node.prerequisiteIds != null)
+                foreach (var pid in node.prerequisiteIds)
+                    if (!string.IsNullOrEmpty(pid) && !IsUnlocked(pid)) return false;
             return true;
         }
 

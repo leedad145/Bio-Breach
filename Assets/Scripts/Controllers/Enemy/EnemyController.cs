@@ -56,6 +56,28 @@ namespace BioBreach.Controller.Enemy
         [HideInInspector] public float hpMultiplier     = 1f;
         [HideInInspector] public float damageMultiplier = 1f;
         [HideInInspector] public float speedMultiplier  = 1f;
+        [HideInInspector] public EnemySpawner homeSpawner;
+
+        // =====================================================================
+        // 적 타입 특수 능력 (JSON에서 로드)
+        // =====================================================================
+
+        enum EnemyType { Normal, Tanker, Exploder, Acid, Healer }
+        EnemyType _enemyType = EnemyType.Normal;
+
+        // Tanker & Exploder
+        float _explosionRadius = 5f;
+        float _explosionDamage = 35f;
+        // Acid
+        float _acidInterval    = 2f;
+        float _acidRadius      = 3f;
+        float _acidDigStrength = 2f;
+        float _acidTimer;
+        // Healer
+        float _healRadius      = 8f;
+        float _healPerSecond   = 8f;
+        float _healCooldown    = 2f;
+        float _healTimer;
 
         // =====================================================================
         // 네트워크 위치 동기화 (Server → 모든 클라이언트)
@@ -106,6 +128,17 @@ namespace BioBreach.Controller.Enemy
                     targetPriority    = Enum.Parse<TargetPriority>(d.targetPriority, ignoreCase: true);
                     digRadius         = d.digRadius;
                     digStrength       = d.digStrength;
+
+                    if (Enum.TryParse(d.enemyType, ignoreCase: true, out EnemyType et))
+                        _enemyType = et;
+                    _explosionRadius  = d.explosionRadius;
+                    _explosionDamage  = d.explosionDamage;
+                    _acidInterval     = d.acidInterval;
+                    _acidRadius       = d.acidRadius;
+                    _acidDigStrength  = d.acidDigStrength;
+                    _healRadius       = d.healRadius;
+                    _healPerSecond    = d.healPerSecond;
+                    _healCooldown     = d.healCooldown;
                 }
             }
 
@@ -142,7 +175,13 @@ namespace BioBreach.Controller.Enemy
         {
             base.OnNetworkDespawn();
             if (IsServer)
+            {
                 worldManager?.UnregisterViewer(transform);
+                homeSpawner?.ReportEnemyDied();
+                // Exploder: 사망 시 범위 폭발
+                if (!IsAlive && _enemyType == EnemyType.Exploder)
+                    ExplodeOnDeath();
+            }
         }
 
         // =====================================================================
@@ -172,6 +211,7 @@ namespace BioBreach.Controller.Enemy
                 }
 
                 ApplyGravity();
+                UpdateTypeAbility();
 
                 // 클라이언트에 위치·회전 동기화
                 _netPos.Value = transform.position;
@@ -309,6 +349,70 @@ namespace BioBreach.Controller.Enemy
         }
 
         // =====================================================================
+        // 타입별 특수 능력
+        // =====================================================================
+
+        void UpdateTypeAbility()
+        {
+            switch (_enemyType)
+            {
+                case EnemyType.Acid:   UpdateAcid();   break;
+                case EnemyType.Healer: UpdateHealer(); break;
+            }
+        }
+
+        /// <summary>Acid: 주기적으로 주변 Voxel 지형을 부식</summary>
+        void UpdateAcid()
+        {
+            _acidTimer += Time.deltaTime;
+            if (_acidTimer < _acidInterval) return;
+            _acidTimer = 0f;
+            worldManager?.ModifyTerrain(transform.position, _acidRadius, _acidDigStrength, VoxelType.Air);
+        }
+
+        /// <summary>Healer: 주기적으로 주변 적군 HP 회복</summary>
+        void UpdateHealer()
+        {
+            _healTimer += Time.deltaTime;
+            if (_healTimer < _healCooldown) return;
+            _healTimer = 0f;
+
+            float healAmount = _healPerSecond * _healCooldown;
+            float radiusSq   = _healRadius * _healRadius;
+            var allies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
+            foreach (var ally in allies)
+            {
+                if (ally == this || !ally.IsAlive) continue;
+                if ((ally.transform.position - transform.position).sqrMagnitude > radiusSq) continue;
+                ally.Heal(healAmount);
+            }
+        }
+
+        /// <summary>Tanker: 공격 시 주변 범위 피해 (AOE 슬램)</summary>
+        void TryAoeStomp()
+        {
+            var hits = Physics.OverlapSphere(transform.position, _explosionRadius, defenseLayer);
+            foreach (var hit in hits)
+            {
+                var entity = hit.GetComponent<EntityMonoBehaviour>();
+                if (entity != null && entity.IsAlive)
+                    entity.TakeDamage(_explosionDamage);
+            }
+        }
+
+        /// <summary>Exploder: 사망 시 범위 폭발</summary>
+        void ExplodeOnDeath()
+        {
+            var hits = Physics.OverlapSphere(transform.position, _explosionRadius, defenseLayer);
+            foreach (var hit in hits)
+            {
+                var entity = hit.GetComponent<EntityMonoBehaviour>();
+                if (entity != null && entity.IsAlive)
+                    entity.TakeDamage(_explosionDamage);
+            }
+        }
+
+        // =====================================================================
         // 공격
         // =====================================================================
 
@@ -319,6 +423,11 @@ namespace BioBreach.Controller.Enemy
             if (Time.time - _lastActionTime < attackCooldown) return;
 
             target.TakeDamage(attackDamage);
+
+            // Tanker: 공격마다 AOE 슬램 추가
+            if (_enemyType == EnemyType.Tanker)
+                TryAoeStomp();
+
             _lastActionTime = Time.time;
         }
 

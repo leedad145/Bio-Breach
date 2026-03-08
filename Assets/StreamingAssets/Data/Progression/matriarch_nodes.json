@@ -1,0 +1,101 @@
+[
+  {
+    "id": "mat_hp1",
+    "displayName": "강인한 세포벽 I",
+    "description": "최대 HP +100",
+    "statType": "MaxHp",
+    "bonusValue": 100,
+    "prerequisiteIds": [],
+    "cost": 5,
+    "treeColumn": 0,
+    "treeRow": 0
+  },
+  {
+    "id": "mat_hp2",
+    "displayName": "강인한 세포벽 II",
+    "description": "최대 HP +200",
+    "statType": "MaxHp",
+    "bonusValue": 200,
+    "prerequisiteIds": ["mat_hp1"],
+    "cost": 10,
+    "treeColumn": 0,
+    "treeRow": 1
+  },
+  {
+    "id": "mat_hp3",
+    "displayName": "강인한 세포벽 III",
+    "description": "최대 HP +400",
+    "statType": "MaxHp",
+    "bonusValue": 400,
+    "prerequisiteIds": ["mat_hp2"],
+    "cost": 20,
+    "treeColumn": 0,
+    "treeRow": 2
+  },
+  {
+    "id": "mat_regen1",
+    "displayName": "자가 치유 I",
+    "description": "초당 HP 회복 +5",
+    "statType": "Regen",
+    "bonusValue": 5,
+    "prerequisiteIds": [],
+    "cost": 5,
+    "treeColumn": 1,
+    "treeRow": 0
+  },
+  {
+    "id": "mat_regen2",
+    "displayName": "자가 치유 II",
+    "description": "초당 HP 회복 +10",
+    "statType": "Regen",
+    "bonusValue": 10,
+    "prerequisiteIds": ["mat_regen1"],
+    "cost": 10,
+    "treeColumn": 1,
+    "treeRow": 1
+  },
+  {
+    "id": "mat_armor1",
+    "displayName": "이중 방어막",
+    "description": "받는 피해 -10%",
+    "statType": "Armor",
+    "bonusValue": 0.1,
+    "prerequisiteIds": ["mat_hp2", "mat_regen2"],
+    "cost": 25,
+    "treeColumn": 1,
+    "treeRow": 2
+  },
+  {
+    "id": "mat_delay1",
+    "displayName": "면역 억제 I",
+    "description": "웨이브 간격 +10초",
+    "statType": "SpawnDelay",
+    "bonusValue": 10,
+    "prerequisiteIds": [],
+    "cost": 8,
+    "treeColumn": 2,
+    "treeRow": 0
+  },
+  {
+    "id": "mat_delay2",
+    "displayName": "면역 억제 II",
+    "description": "웨이브 간격 +15초",
+    "statType": "SpawnDelay",
+    "bonusValue": 15,
+    "prerequisiteIds": ["mat_delay1"],
+    "cost": 15,
+    "treeColumn": 2,
+    "treeRow": 1
+  },
+  {
+    "id": "mat_reward1",
+    "displayName": "에센스 추출",
+    "description": "웨이브 보상 GE +3",
+    "statType": "WaveReward",
+    "bonusValue": 3,
+    "prerequisiteIds": ["mat_delay1"],
+    "cost": 12,
+    "treeColumn": 2,
+    "treeRow": 2
+  }
+]

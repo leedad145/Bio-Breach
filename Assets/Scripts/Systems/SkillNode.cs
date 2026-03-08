@@ -16,7 +16,7 @@ namespace BioBreach.Systems
         /// <summary>JSON 문자열 — "MoveSpeed" / "JumpHeight" / "MaxHp"</summary>
         public string statType;
         public float  bonusValue;
-        public string prerequisiteId;   // null/empty = 루트 노드
+        public string[] prerequisiteIds = new string[0]; // 선행 스킬 ID 목록 (모두 해제돼야 해제 가능)
         public int    cost;
         public int    treeColumn;       // 0=이동속도, 1=점프력, 2=체력
         public int    treeRow;          // 0=1단계, 1=2단계, 2=3단계

@@ -33,21 +33,24 @@ namespace BioBreach.Engine.Data
         {
             if (_loaded) return;
 
-            string root = Path.Combine(Application.streamingAssetsPath, "Data");
+            string root       = Path.Combine(Application.streamingAssetsPath, "Data");
+            string enemyDir   = Path.Combine(root, "Enemies");
+            string itemDir    = Path.Combine(root, "Items");
+            string worldDir   = Path.Combine(root, "World");
 
-            Enemies.LoadFile(Path.Combine(root, "enemies.json"));
-            Turrets.LoadFile(Path.Combine(root, "turrets.json"));
+            Enemies.LoadFile(Path.Combine(enemyDir, "enemies.json"));
+            Turrets.LoadFile(Path.Combine(itemDir,  "turrets.json"));
 
             // 아이템은 타입별 파일을 분리해 같은 ItemRepository에 통합
-            Items.LoadFile(Path.Combine(root, "voxel_blocks.json"));
-            Items.LoadFile(Path.Combine(root, "usables.json"));
-            Items.LoadFile(Path.Combine(root, "placeables.json"));
-            Items.LoadFile(Path.Combine(root, "melee_weapons.json"));
-            Items.LoadFile(Path.Combine(root, "universal_miners.json"));
-            Items.LoadFile(Path.Combine(root, "raw_materials.json"));
-            Items.LoadFile(Path.Combine(root, "equippables.json")); // 장비 아이템
+            Items.LoadFile(Path.Combine(itemDir, "voxel_blocks.json"));
+            Items.LoadFile(Path.Combine(itemDir, "usables.json"));
+            Items.LoadFile(Path.Combine(itemDir, "placeables.json"));
+            Items.LoadFile(Path.Combine(itemDir, "melee_weapons.json"));
+            Items.LoadFile(Path.Combine(itemDir, "universal_miners.json"));
+            Items.LoadFile(Path.Combine(itemDir, "raw_materials.json"));
+            Items.LoadFile(Path.Combine(itemDir, "equippables.json"));
 
-            Crafting.LoadFile(Path.Combine(root, "recipes.json"));
+            Crafting.LoadFile(Path.Combine(worldDir, "recipes.json"));
 
             _loaded = true;
         }

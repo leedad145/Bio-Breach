@@ -15,5 +15,20 @@ namespace BioBreach.Engine.Data
         public float  digDetectDist     = 3f;
         public float  digRadius         = 3f;
         public float  digStrength       = 2f;
+
+        // ── 타입별 특수 필드 ──────────────────────────────────────────────────
+        /// <summary>Normal | Tanker | Exploder | Acid | Healer</summary>
+        public string enemyType         = "Normal";
+        // Tanker & Exploder
+        public float  explosionRadius   = 5f;
+        public float  explosionDamage   = 35f;
+        // Acid
+        public float  acidInterval      = 2f;
+        public float  acidRadius        = 3f;
+        public float  acidDigStrength   = 2f;
+        // Healer
+        public float  healRadius        = 8f;
+        public float  healPerSecond     = 8f;
+        public float  healCooldown      = 2f;
     }
 }
