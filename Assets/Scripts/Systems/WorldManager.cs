@@ -27,9 +27,10 @@ namespace BioBreach.Systems
 
         [Header("청크 설정")]
         [SerializeField] VoxelMaterialMap voxelMaterialMap;
-        [SerializeField] int viewDistance     = 5;
-        [SerializeField] int size             = 20;
-        [SerializeField] float voxelSize      = 3f;
+        [SerializeField] int viewDistance         = 5;
+        [SerializeField] int verticalViewDistance = 2;
+        [SerializeField] int size                 = 20;
+        [SerializeField] float voxelSize          = 3f;
 
         // =====================================================================
         // 네트워크 변수
@@ -74,8 +75,9 @@ namespace BioBreach.Systems
         {
             _chunkWorldSize = size * voxelSize;
 
-            int side     = viewDistance * 2 + 1;
-            int poolSize = side * side * side + 30;
+            int sideXZ   = viewDistance * 2 + 1;
+            int sideY    = verticalViewDistance * 2 + 1;
+            int poolSize = sideXZ * sideY * sideXZ + 30;
             for (int i = 0; i < poolSize; i++)
                 _chunkPool.Push(CreatePooledChunk());
 
@@ -212,9 +214,9 @@ namespace BioBreach.Systems
             _chunksToGenerate.Clear();
             var toAdd = new List<(Vector3Int coord, int dist)>();
 
-            for (int x = playerPos.x - viewDistance; x <= playerPos.x + viewDistance; x++)
-            for (int y = playerPos.y - viewDistance; y <= playerPos.y + viewDistance; y++)
-            for (int z = playerPos.z - viewDistance; z <= playerPos.z + viewDistance; z++)
+            for (int x = playerPos.x - viewDistance;         x <= playerPos.x + viewDistance;         x++)
+            for (int y = playerPos.y - verticalViewDistance; y <= playerPos.y + verticalViewDistance; y++)
+            for (int z = playerPos.z - viewDistance;         z <= playerPos.z + viewDistance;         z++)
             {
                 var coord = new Vector3Int(x, y, z);
                 if (_activeChunks.ContainsKey(coord)) continue;
@@ -248,8 +250,9 @@ namespace BioBreach.Systems
         bool IsWithinAnyViewer(Vector3Int coord, Vector3Int playerPos)
         {
             int dx = Mathf.Abs(coord.x - playerPos.x);
+            int dy = Mathf.Abs(coord.y - playerPos.y);
             int dz = Mathf.Abs(coord.z - playerPos.z);
-            if (dx <= viewDistance + 1 && dz <= viewDistance + 1) return true;
+            if (dx <= viewDistance + 1 && dy <= verticalViewDistance + 1 && dz <= viewDistance + 1) return true;
 
             for (int i = 0; i < _extraViewers.Count; i++)
             {
@@ -400,9 +403,9 @@ namespace BioBreach.Systems
             if (!Application.isPlaying || player == null) return;
             Gizmos.color = new Color(0, 1, 0, 0.2f);
             Vector3Int p = WorldToChunkPos(player.position);
-            for (int x = p.x - viewDistance; x <= p.x + viewDistance; x++)
-            for (int y = p.y - viewDistance; y <= p.y + viewDistance; y++)
-            for (int z = p.z - viewDistance; z <= p.z + viewDistance; z++)
+            for (int x = p.x - viewDistance;         x <= p.x + viewDistance;         x++)
+            for (int y = p.y - verticalViewDistance; y <= p.y + verticalViewDistance; y++)
+            for (int z = p.z - viewDistance;         z <= p.z + viewDistance;         z++)
             {
                 Gizmos.DrawWireCube(
                     new Vector3(x, y, z) * _chunkWorldSize + Vector3.one * (_chunkWorldSize * 0.5f),
