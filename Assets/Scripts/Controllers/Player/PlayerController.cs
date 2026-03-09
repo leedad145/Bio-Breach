@@ -143,16 +143,16 @@ namespace BioBreach.Controller.Player
         }
 
         public float[] ModifyTerrain(Vector3 pos, float radius, float strength, VoxelType type)
-            => worldManager != null ? worldManager.ModifyTerrain(pos, radius, strength, type) : new float[5];
+            => worldManager != null ? worldManager.ModifyTerrain(pos, radius, strength, type) : new float[VoxelDatabase.TypeCount];
 
         // 공개 스탯 프로퍼티 (InventoryUI에서 분해 표시용)
         public float BaseMoveSpeed  => _baseMoveSpeed;
         public float BaseJumpHeight => _baseJumpHeight;
         public float BuffSpeed      => _speedBuff;
         public float BuffJump       => _jumpBuff;
-        public float SkillSpeedBonus => BioBreach.Systems.PlayerSkillData.Instance?.TotalSpeedBonus ?? 0f;
-        public float SkillJumpBonus  => BioBreach.Systems.PlayerSkillData.Instance?.TotalJumpBonus  ?? 0f;
-        public float SkillHpBonus    => BioBreach.Systems.PlayerSkillData.Instance?.TotalHpBonus    ?? 0f;
+        public float SkillSpeedBonus => PlayerSkillData.Instance?.TotalSpeedBonus ?? 0f;
+        public float SkillJumpBonus  => PlayerSkillData.Instance?.TotalJumpBonus  ?? 0f;
+        public float SkillHpBonus    => PlayerSkillData.Instance?.TotalHpBonus    ?? 0f;
 
         public void AddMoveSpeed(float v, float duration = 0f)
         {
@@ -573,7 +573,7 @@ namespace BioBreach.Controller.Player
                 _minerHudStyle.normal.textColor = Color.white;
             }
 
-            string[] names = { "", "단백질", "철분", "칼슘", "유전자정수" };
+            string[] names = { "", "단백질", "철분", "칼슘", "유전자정수", "지방", "골수" };
             var acc   = miner.Accumulation;
             float rowH    = 15f;
             float panelW  = 165f;

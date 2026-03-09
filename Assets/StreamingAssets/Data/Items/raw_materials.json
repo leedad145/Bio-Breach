@@ -2,20 +2,20 @@
   {
     "id": "raw_iron",
     "type": "RawMaterial",
-    "itemName": "철 원석",
+    "itemName": "철분",
     "description": "조합 재료로 사용되는 기초 광물입니다.",
     "gridWidth": 1,
     "gridHeight": 1,
-    "maxStack": 10000
+    "maxStack": 100
   },
   {
     "id": "raw_calcium",
     "type": "RawMaterial",
-    "itemName": "칼슘 결정",
+    "itemName": "칼슘",
     "description": "조합 재료로 사용되는 기초 광물입니다.",
     "gridWidth": 1,
     "gridHeight": 1,
-    "maxStack": 10000
+    "maxStack": 100
   },
   {
     "id": "raw_genetic_essence",
@@ -24,15 +24,33 @@
     "description": "희귀한 조합 재료입니다.",
     "gridWidth": 1,
     "gridHeight": 1,
-    "maxStack": 10000
+    "maxStack": 10
   },
   {
     "id": "raw_protein",
     "type": "RawMaterial",
-    "itemName": "단백질 덩어리",
+    "itemName": "단백질",
     "description": "조합 재료로 사용되는 기초 광물입니다.",
     "gridWidth": 1,
     "gridHeight": 1,
-    "maxStack": 10000
+    "maxStack": 100
+  },
+  {
+    "id": "raw_lipid",
+    "type": "RawMaterial",
+    "itemName": "지방",
+    "description": "조합 재료로 사용되는 기초 광물입니다.",
+    "gridWidth": 1,
+    "gridHeight": 1,
+    "maxStack": 100
+  },
+  {
+    "id": "raw_marrow",
+    "type": "RawMaterial",
+    "itemName": "골수",
+    "description": "희귀한 조합 재료입니다.",
+    "gridWidth": 1,
+    "gridHeight": 1,
+    "maxStack": 10
   }
 ]

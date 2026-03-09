@@ -12,6 +12,8 @@ namespace BioBreach.Core.Voxel
     /// </summary>
     public static class VoxelDatabase
     {
+        public static readonly int TypeCount = System.Enum.GetValues(typeof(VoxelType)).Length;
+
         private static VoxelProperty[] _properties;
 
         public static VoxelProperty[] Properties
@@ -42,6 +44,15 @@ namespace BioBreach.Core.Voxel
 
                 // [4] GeneticEssence - 희귀 핵산 (매우 희귀)
                 new VoxelProperty(VoxelType.GeneticEssence, "유전자 정수",  20f,  50f),
+
+                // [5] Lipid - 지방 조직 (흔함)
+                new VoxelProperty(VoxelType.Lipid,          "지방",         1.5f, 400f),
+
+                // [6] Marrow - 골수, Calcium 내부에서만 생성 (희귀)
+                new VoxelProperty(VoxelType.Marrow,         "골수",         20f,   50f),
+
+                // [7] Wall - 생체막, 맵 경계. hardness=0 → 파괴 불가
+                new VoxelProperty(VoxelType.Wall,            "생체막",       0f,    0f),
             };
         }
 

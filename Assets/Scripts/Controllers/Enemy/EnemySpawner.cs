@@ -15,6 +15,7 @@ using BioBreach.Core.Voxel;
 using BioBreach.Engine;
 using BioBreach.Engine.Data;
 using BioBreach.Engine.Item;
+using System.Collections.Generic;
 
 namespace BioBreach.Controller.Enemy
 {
@@ -100,8 +101,12 @@ namespace BioBreach.Controller.Enemy
         int             _waveIndex;      // 지금까지 진행한 웨이브 수
         float           _timer;
         int             _activeEnemies;  // 현재 살아있는 이번 웨이브 적 수 (Server only)
+        bool            _worldReady;     // WorldManager 청크 생성 완료 여부
         IObjectResolver _resolver;
         ItemRepository  _itemRepo;
+
+        /// <summary>현재 살아있는 적 리스트 — Healer가 FindObjectsByType 대신 사용</summary>
+        public readonly List<EnemyController> ActiveEnemyList = new();
 
         [Inject]
         public void Construct(IObjectResolver resolver, ItemRepository itemRepo)
@@ -121,8 +126,27 @@ namespace BioBreach.Controller.Enemy
             if (worldManager == null)
                 worldManager = FindAnyObjectByType<WorldManager>();
 
-            // 첫 소환은 지연 없이 바로 실행
-            _timer = spawnInterval;
+            worldManager?.RegisterViewer(transform, 1);
+
+            // 월드가 이미 준비됐으면 즉시 시작, 아니면 완료 이벤트 대기
+            if (worldManager == null || worldManager.IsReady)
+                ActivateSpawner();
+            else
+                WorldManager.OnWorldReady += ActivateSpawner;
+        }
+
+        public override void OnNetworkDespawn()
+        {
+            if (!IsServer) return;
+            WorldManager.OnWorldReady -= ActivateSpawner;
+            worldManager?.UnregisterViewer(transform);
+        }
+
+        void ActivateSpawner()
+        {
+            WorldManager.OnWorldReady -= ActivateSpawner;
+            _worldReady         = true;
+            _timer              = spawnInterval;   // 첫 웨이브 지연 없이 바로 실행
             _nextWaveTime.Value = Time.time;
         }
 
@@ -209,6 +233,8 @@ namespace BioBreach.Controller.Enemy
 
                 if (worldManager != null) enemy.worldManager = worldManager;
                 enemy.matriarchTarget = transform;
+
+                ActiveEnemyList.Add(enemy);
             }
 
             if (go.TryGetComponent<NetworkObject>(out var netObj))
@@ -222,9 +248,10 @@ namespace BioBreach.Controller.Enemy
         // =====================================================================
 
         /// <summary>EnemyController가 사망 시 서버에서 호출. 웨이브 클리어를 판정한다.</summary>
-        public void ReportEnemyDied()
+        public void ReportEnemyDied(EnemyController enemy)
         {
             if (!IsServer) return;
+            ActiveEnemyList.Remove(enemy);
             _activeEnemies = Mathf.Max(0, _activeEnemies - 1);
             if (_activeEnemies == 0 && _waveIndex > 0)
                 WaveClearedInternal(_waveIndex - 1);

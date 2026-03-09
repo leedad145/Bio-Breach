@@ -11,6 +11,7 @@
 using System;
 using UnityEngine;
 using VContainer;
+using BioBreach.Controller.Enemy.Base;
 using BioBreach.Engine.Entity;
 using BioBreach.Engine.Data;
 using BioBreach.Systems;
@@ -20,6 +21,7 @@ using Unity.Netcode;
 
 namespace BioBreach.Controller.Enemy
 {
+
     [RequireComponent(typeof(CharacterController))]
     public class EnemyController : EntityMonoBehaviour
     {
@@ -35,6 +37,11 @@ namespace BioBreach.Controller.Enemy
         public LayerMask  defenseLayer;
         public Transform  matriarchTarget;
         public WorldManager worldManager;
+        ////////////////////////////
+        EnemyBrain brain;
+        EnemyNavigation navigation;
+        EnemyAction action;
+        public EntityMonoBehaviour CurrentTarget => _currentTarget;
 
         // ── 스탯 (JSON에서 로드, Inspector 비공개) ──────────────────────────────
         [HideInInspector] public float           moveSpeed      = 5f;
@@ -102,6 +109,22 @@ namespace BioBreach.Controller.Enemy
         float               _lastActionTime;   // 공격 + 파기 공유 쿨타임
         EntityMonoBehaviour _currentTarget;
         EnemyRepository     _enemyRepo;
+        float _lastJumpTime;
+
+        const float JUMP_COOLDOWN = 0.8f;
+
+        const float RAY_LOW = 0.3f;
+        const float RAY_MID = 1.0f;
+        const float RAY_HIGH = 1.8f;
+
+        // ── 최적화용 캐시 ──────────────────────────────────────────────────────
+        float   _lastTargetTime  = -999f;
+        const float TARGET_INTERVAL = 0.25f;   // 타겟 선택 간격 (초)
+
+        float   _blockCacheTime  = -999f;
+        const float BLOCK_INTERVAL  = 0.1f;    // SphereCast 캐시 유효 시간 (초)
+        bool    _cachedBlocking;
+        Vector3 _cachedBlockPoint;
 
         [Inject]
         public void Construct(EnemyRepository enemyRepo) => _enemyRepo = enemyRepo;
@@ -152,6 +175,9 @@ namespace BioBreach.Controller.Enemy
             base.OnNetworkSpawn(); // EntityMonoBehaviour HP 초기화
 
             _cc = GetComponent<CharacterController>();
+            brain = new EnemyBrain(this);
+            navigation = new EnemyNavigation();
+            action = new EnemyAction(this);
 
             if (!IsServer)
             {
@@ -163,8 +189,7 @@ namespace BioBreach.Controller.Enemy
             if (worldManager == null)
                 worldManager = FindAnyObjectByType<WorldManager>();
 
-            // Server만 뷰어 등록 — AI 이동은 Server에서만 실행
-            worldManager?.RegisterViewer(transform, 1);
+            // 뷰어 등록은 스포너가 담당 — 적 개체는 개별 등록하지 않음
 
             // 스폰 직후 현재 위치를 기록 (클라이언트가 (0,0,0)에서 튀는 것 방지)
             _netPos.Value = transform.position;
@@ -176,8 +201,7 @@ namespace BioBreach.Controller.Enemy
             base.OnNetworkDespawn();
             if (IsServer)
             {
-                worldManager?.UnregisterViewer(transform);
-                homeSpawner?.ReportEnemyDied();
+                homeSpawner?.ReportEnemyDied(this);
                 // Exploder: 사망 시 범위 폭발
                 if (!IsAlive && _enemyType == EnemyType.Exploder)
                     ExplodeOnDeath();
@@ -192,41 +216,42 @@ namespace BioBreach.Controller.Enemy
         {
             if (!IsSpawned) return;
 
-            if (IsServer)
+            if (!IsServer)
             {
-                if (!IsAlive) return;
-
-                _currentTarget = SelectTarget();
-
-                if (_currentTarget != null)
-                {
-                    MoveToward(_currentTarget.transform.position);
-                    TryAttack(_currentTarget);
-                }
-                else if (matriarchTarget != null)
-                {
-                    MoveToward(matriarchTarget.position);
-                    var matriarch = matriarchTarget.GetComponent<EntityMonoBehaviour>();
-                    if (matriarch != null) TryAttack(matriarch);
-                }
-
-                ApplyGravity();
-                UpdateTypeAbility();
-
-                // 클라이언트에 위치·회전 동기화
-                _netPos.Value = transform.position;
-                _netYaw.Value = transform.eulerAngles.y;
-            }
-            else
-            {
-                // 클라이언트: 서버 위치·회전으로 보간
                 if (_netPos.Value.sqrMagnitude < 0.001f) return;
 
                 transform.SetPositionAndRotation(
                     Vector3.Lerp(transform.position, _netPos.Value, Time.deltaTime * 15f),
                     Quaternion.Slerp(transform.rotation,
-                        Quaternion.Euler(0f, _netYaw.Value, 0f), Time.deltaTime * 15f));
+                        Quaternion.Euler(0f, _netYaw.Value, 0f),
+                        Time.deltaTime * 15f));
+
+                return;
             }
+
+            if (!IsAlive) return;
+
+            if (Time.time - _lastTargetTime >= TARGET_INTERVAL)
+            {
+                _currentTarget = SelectTarget();
+                _lastTargetTime = Time.time;
+            }
+
+            brain.UpdateBrain();
+
+            // AI 행동 전략은 EnemyAction.Tick()이 상태별로 결정
+            action.Tick(brain.CurrentState);
+
+            ApplyGravity();
+            UpdateTypeAbility();
+
+            Vector3 pos = transform.position;
+            if ((pos - _netPos.Value).sqrMagnitude > 0.01f)
+                _netPos.Value = pos;
+
+            float yaw = transform.eulerAngles.y;
+            if (Mathf.Abs(Mathf.DeltaAngle(yaw, _netYaw.Value)) > 0.5f)
+                _netYaw.Value = yaw;
         }
 
         // =====================================================================
@@ -247,26 +272,58 @@ namespace BioBreach.Controller.Enemy
         // =====================================================================
 
         EntityMonoBehaviour SelectTarget()
-            => TargetSelector.FindTarget(transform.position, detectionRange, defenseLayer, targetPriority);
+        {
+            var target = TargetSelector.FindTarget(
+                transform.position,
+                detectionRange,
+                defenseLayer,
+                targetPriority
+            );
 
+            if (target != null)
+                return target;
+
+            if (matriarchTarget != null)
+                return matriarchTarget.GetComponent<EntityMonoBehaviour>();
+
+            return null;
+        }
         // =====================================================================
         // 이동 & Voxel 장애물 처리
         // =====================================================================
-
-        void MoveToward(Vector3 targetPos)
+        public bool IsTargetInAttackRange(EntityMonoBehaviour target)
+        {
+            return (transform.position - target.transform.position).sqrMagnitude
+                <= attackRange * attackRange;
+        }
+        public bool IsPathBlocked()
+        {
+            Vector3 dir = transform.forward;
+            return IsVoxelBlocking(dir, out _);
+        }
+        
+        public void MoveToward(Vector3 targetPos)
         {
             Vector3 diff = targetPos - transform.position;
-            if (diff.sqrMagnitude <= attackRange * attackRange) return;
 
-            // 수평 방향만 사용 (수직은 중력으로 처리)
-            Vector3 dir = new Vector3(diff.x, 0f, diff.z).normalized;
-            if (dir.sqrMagnitude < 0.001f) return;
+            if (diff.sqrMagnitude <= attackRange * attackRange)
+                return;
 
-            if (IsVoxelBlocking(dir, out _))
+            Vector3 dir = new Vector3(diff.x, 0, diff.z).normalized;
+
+            if (dir.sqrMagnitude < 0.001f)
+                return;
+
+            if (CheckObstacle(dir, out ObstacleType type))
             {
-                // 위쪽 각도 레이가 뚫려 있으면 점프, 전부 막히면 파기
-                if (!TryJumpOver(dir))
+                if (type == ObstacleType.Jump)
+                {
+                    TryJump();
+                }
+                else if (type == ObstacleType.Wall)
+                {
                     TryDigToward(diff);
+                }
             }
             else
             {
@@ -275,35 +332,68 @@ namespace BioBreach.Controller.Enemy
 
             transform.rotation = Quaternion.LookRotation(dir);
         }
-
-        /// <summary>
-        /// dir 기준으로 위쪽 각도 레이(jumpAngles)를 순서대로 쏜다.
-        /// 하나라도 뚫려 있으면 점프하고 true 반환, 전부 막히면 false.
-        /// </summary>
-        bool TryJumpOver(Vector3 dir)
+        enum ObstacleType
         {
-            if (!_cc.isGrounded) return false;
+            None,
+            Jump,
+            Wall
+        }
+        bool CheckObstacle(Vector3 dir, out ObstacleType type)
+        {
+            type = ObstacleType.None;
 
-            // dir이 수평이므로 Cross(dir, up)은 항상 수평 수직벡터 → 위로 회전하는 축
-            Vector3 rotAxis = Vector3.Cross(dir, Vector3.up);
+            float dist = _cc.radius + 0.5f;
 
-            foreach (float angle in jumpAngles)
+            Vector3 basePos = transform.position;
+
+            bool low =
+                Physics.Raycast(basePos + Vector3.up * RAY_LOW, dir, dist);
+
+            bool mid =
+                Physics.Raycast(basePos + Vector3.up * RAY_MID, dir, dist);
+
+            bool high =
+                Physics.Raycast(basePos + Vector3.up * RAY_HIGH, dir, dist);
+
+            if (!low)
+                return false;
+
+            if (low && !mid)
+                return false;
+
+            if (low && mid && !high)
             {
-                Vector3 upDir = Quaternion.AngleAxis(angle, rotAxis) * dir;
-                if (!IsVoxelBlocking(upDir, out _))
-                {
-                    _velocityY = jumpSpeed;
-                    return true;
-                }
+                type = ObstacleType.Jump;
+                return true;
             }
+
+            if (low && mid && high)
+            {
+                type = ObstacleType.Wall;
+                return true;
+            }
+
             return false;
+        }
+        
+
+        void TryJump()
+        {
+            if (!_cc.isGrounded)
+                return;
+
+            if (Time.time - _lastJumpTime < JUMP_COOLDOWN)
+                return;
+
+            _velocityY = jumpSpeed;
+            _lastJumpTime = Time.time;
         }
 
         /// <summary>
         /// diff 방향으로 Voxel이 막혀 있으면 파낸다. MoveToward에서만 호출.
         /// 수평 + 수직 두 SphereCast로 위아래 장애물도 처리한다.
         /// </summary>
-        void TryDigToward(Vector3 diff)
+        public void TryDigToward(Vector3 diff)
         {
             if (worldManager == null || digStrength <= 0f) return;
             if (Time.time - _lastActionTime < attackCooldown) return;
@@ -334,7 +424,7 @@ namespace BioBreach.Controller.Enemy
         {
             blockPoint = Vector3.zero;
 
-            float   checkDist = _cc.radius + detectionRange;
+            float checkDist = _cc.radius + 1.5f;
             Vector3 origin    = transform.position + _cc.center;
 
             if (!Physics.SphereCast(origin, digRadius, dir, out RaycastHit hit, checkDist,
@@ -379,9 +469,18 @@ namespace BioBreach.Controller.Enemy
 
             float healAmount = _healPerSecond * _healCooldown;
             float radiusSq   = _healRadius * _healRadius;
-            var allies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
-            foreach (var ally in allies)
+
+            // 스포너의 리스트를 우선 사용 — FindObjectsByType 씬 전체 스캔 방지
+            var allies = homeSpawner != null
+                ? homeSpawner.ActiveEnemyList
+                : null;
+
+            if (allies == null) return;
+
+            for (int i = allies.Count - 1; i >= 0; i--)
             {
+                var ally = allies[i];
+                if (ally == null) { allies.RemoveAt(i); continue; }
                 if (ally == this || !ally.IsAlive) continue;
                 if ((ally.transform.position - transform.position).sqrMagnitude > radiusSq) continue;
                 ally.Heal(healAmount);
@@ -416,7 +515,7 @@ namespace BioBreach.Controller.Enemy
         // 공격
         // =====================================================================
 
-        void TryAttack(EntityMonoBehaviour target)
+        public void TryAttack(EntityMonoBehaviour target)
         {
             if (target == null || !target.IsAlive) return;
             if ((transform.position - target.transform.position).sqrMagnitude > attackRange * attackRange) return;
@@ -439,12 +538,29 @@ namespace BioBreach.Controller.Enemy
         {
             Gizmos.color = Color.red;
             Gizmos.DrawWireSphere(transform.position, detectionRange);
+
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireSphere(transform.position, attackRange);
 
-            // 전방 감지 레이
-            Gizmos.color = Color.magenta;
-            Gizmos.DrawRay(transform.position, transform.forward * (_cc != null ? _cc.radius + detectionRange : detectionRange));
+            if (_cc == null)
+                _cc = GetComponent<CharacterController>();
+
+            Vector3 dir = transform.forward;
+            float dist = _cc != null ? _cc.radius + 0.8f : 1f;
+
+            Vector3 basePos = transform.position;
+
+            // LOW RAY (발)
+            Gizmos.color = Color.red;
+            Gizmos.DrawRay(basePos + Vector3.up * 0.3f, dir * dist);
+
+            // MID RAY (가슴)
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawRay(basePos + Vector3.up * 1.0f, dir * dist);
+
+            // HIGH RAY (머리)
+            Gizmos.color = Color.green;
+            Gizmos.DrawRay(basePos + Vector3.up * 1.8f, dir * dist);
         }
     }
 }

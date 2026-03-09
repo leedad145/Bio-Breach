@@ -46,6 +46,12 @@ namespace BioBreach.Engine.MarchingCubes
         private Vector3 _hemisphereCenter = Vector3.zero;
 
         // =====================================================================
+        // 생체막(Wall) 경계 설정
+        // =====================================================================
+        private Vector3 _wallCenter = Vector3.zero;
+        private float _wallRadius = 0f;  // 0이면 벽 없음
+
+        // =====================================================================
         // 복셀 타입 확률 임계값 (0~1, 높을수록 희귀)
         // =====================================================================
         /*
@@ -58,16 +64,19 @@ namespace BioBreach.Engine.MarchingCubes
             > 0.75,약 0.8%,전설급. 정말 가끔 뭉쳐있음.
             > 0.80,0.1% 미만,거의 생성되지 않음.
         */
-        private float _airThreshold     = 0.6f;
-        private float _ironThreshold     = 0.62f;
+        private float _airThreshold     = 0.62f;
+        private float _ironThreshold     = 0.65f;
         private float _calciumThreshold  = 0.68f;
-        private float _essenceThreshold  = 0.78f;
+        private float _essenceThreshold  = 0.79f;
+        private float _lipidThreshold    = 0.65f;
+        private float _marrowThreshold   = 0.76f;  // Calcium 내부에서만 체크, 희귀
 
         // =====================================================================
         // 청크 생성
         // =====================================================================
 
-        public void CreateChunk(int sizeX, int sizeY, int sizeZ, float voxelSize, Vector3 seed)
+        public void CreateChunk(int sizeX, int sizeY, int sizeZ, float voxelSize, Vector3 seed,
+                                Vector3 wallCenter = default, float wallRadius = 0f)
         {
             _sizeX = sizeX + 1;
             _sizeY = sizeY + 1;
@@ -75,6 +84,8 @@ namespace BioBreach.Engine.MarchingCubes
             _voxelSize = voxelSize;
             _chunkOffset = transform.position;
             _seed = seed;
+            _wallCenter = wallCenter;
+            _wallRadius = wallRadius;
 
             int totalVoxels = _sizeX * _sizeY * _sizeZ;
             _density = new float[totalVoxels];
@@ -102,36 +113,34 @@ namespace BioBreach.Engine.MarchingCubes
                 Vector3 worldPos  = new Vector3(x, y, z) * _voxelSize + _chunkOffset;
                 Vector3 seededPos = worldPos + _seed;
 
+                // 생체막 경계: mapRadius 이상이면 Wall로 고정
+                if (_wallRadius > 0f && Vector3.Distance(worldPos, _wallCenter) >= _wallRadius)
+                {
+                    _voxelTypes[index] = VoxelType.Wall;
+                    _density[index] = MIN_DENSITY;
+                    continue;
+                }
+
                 VoxelType type = DetermineVoxelType(seededPos);
                 _voxelTypes[index] = type;
-                if(_voxelTypes[index] == VoxelType.Air)
+                if (_voxelTypes[index] == VoxelType.Air)
                 {
                     _density[index] = MAX_DENSITY;
                 }
                 else
                 {
-                    float density;
+                    float dist = Vector3.Distance(worldPos, _hemisphereCenter);
 
-                    if (worldPos.y <= _hemisphereCenter.y)
+                    if (worldPos.y > _hemisphereCenter.y && dist < radius)
                     {
-                        density = MIN_DENSITY;
+                        // 반구 안: Calcium·Marrow만 고체, 나머지는 공기
+                        _density[index] = (type == VoxelType.Calcium || type == VoxelType.Marrow) ? MIN_DENSITY : MAX_DENSITY;
                     }
                     else
                     {
-                        float dist = Vector3.Distance(worldPos, _hemisphereCenter);
-
-                        // 반구 내부
-                        if (dist < radius && type == VoxelType.Protein)
-                        {
-                            density = MAX_DENSITY; // 공기
-                        }
-                        else
-                        {
-                            density = MIN_DENSITY; // 고체
-                        }
+                        // 반구 밖: DetermineVoxelType이 결정한 타입 그대로 고체
+                        _density[index] = MIN_DENSITY;
                     }
-
-                    _density[index] = Mathf.Clamp(density, MIN_DENSITY, MAX_DENSITY);
                 }
             }
         }
@@ -140,35 +149,51 @@ namespace BioBreach.Engine.MarchingCubes
         /// 생체 조직 복셀 타입 결정 — 깊이 구분 없이 균일 노이즈 분포.
         /// 중간의 가중치는 한번에 나오는 덩어리의 크기
         /// 임계값은 인스펙터에서 조작 가능 (높을수록 희귀).
-        /// 우선순위: GeneticEssence > Calcium > Iron > Protein
+        /// 우선순위: GeneticEssence > Calcium(+Marrow) > Iron > Lipid > Protein
         /// </summary>
         private VoxelType DetermineVoxelType(Vector3 seededPos)
         {
             float airNoise = Perlin3D(
                 seededPos.x * 0.05f + 100f,
-                seededPos.y * 0.04f + 100f,
-                seededPos.z * 0.04f + 100f
+                seededPos.y * 0.05f + 100f,
+                seededPos.z * 0.05f + 100f
             );
             float ironNoise = Perlin3D(
-                seededPos.x * 0.2f + 200f,
-                seededPos.y * 0.2f + 200f,
-                seededPos.z * 0.2f + 200f
+                seededPos.x * 0.15f + 200f,
+                seededPos.y * 0.15f + 200f,
+                seededPos.z * 0.15f + 200f
             );
             float calciumNoise = Perlin3D(
-                seededPos.x * 0.08f + 300f,
-                seededPos.y * 0.08f + 300f,
-                seededPos.z * 0.08f + 300f
+                seededPos.x * 0.07f + 300f,
+                seededPos.y * 0.07f + 300f,
+                seededPos.z * 0.07f + 300f
             );
             float essenceNoise = Perlin3D(
                 seededPos.x * 0.5f  + 400f,
                 seededPos.y * 0.5f  + 400f,
                 seededPos.z * 0.5f  + 400f
             );
-            // 그려지는 순서
-            if (calciumNoise > _calciumThreshold) return VoxelType.Calcium;
-            if (airNoise > _airThreshold) return VoxelType.Air;
+            float lipidNoise = Perlin3D(
+                seededPos.x * 0.2f  + 500f,
+                seededPos.y * 0.2f  + 500f,
+                seededPos.z * 0.2f  + 500f
+            );
+            float marrowNoise = Perlin3D(
+                seededPos.x * 0.6f  + 600f,
+                seededPos.y * 0.6f  + 600f,
+                seededPos.z * 0.6f  + 600f
+            );
+
+            if (calciumNoise > _calciumThreshold)
+            {
+                // Calcium 영역 내부에서만 Marrow 생성
+                if (marrowNoise > _marrowThreshold) return VoxelType.Marrow;
+                return VoxelType.Calcium;
+            }
+            if (airNoise     > _airThreshold)     return VoxelType.Air;
             if (essenceNoise > _essenceThreshold) return VoxelType.GeneticEssence;
             if (ironNoise    > _ironThreshold)    return VoxelType.Iron;
+            if (lipidNoise   > _lipidThreshold)   return VoxelType.Lipid;
             return VoxelType.Protein;
         }
 
@@ -180,9 +205,10 @@ namespace BioBreach.Engine.MarchingCubes
         {
             List<Vector3> vertices = new List<Vector3>();
 
-            // VoxelType별 삼각형 인덱스 (Air=0 포함 5개, Air는 사용 안 함)
-            List<int>[] trisByType = new List<int>[5];
-            for (int i = 0; i < 5; i++) trisByType[i] = new List<int>();
+            // VoxelType별 삼각형 인덱스 (Air=0 포함, Air는 사용 안 함)
+            int typeCount = VoxelDatabase.TypeCount;
+            List<int>[] trisByType = new List<int>[typeCount];
+            for (int i = 0; i < typeCount; i++) trisByType[i] = new List<int>();
 
             for (int x = 0; x < _sizeX - 1; x++)
             for (int y = 0; y < _sizeY - 1; y++)
@@ -285,12 +311,12 @@ namespace BioBreach.Engine.MarchingCubes
         /// <summary>큐브의 고체 꼭짓점 중 가장 많은 VoxelType 반환</summary>
         private VoxelType GetDominantType(float[] cube, VoxelType[] types, float isoLevel)
         {
-            int[] counts = new int[5];
+            int[] counts = new int[VoxelDatabase.TypeCount];
             for (int i = 0; i < 8; i++)
                 if (cube[i] < isoLevel)
                     counts[(int)types[i]]++;
             int best = 1; // Air(0) 제외, 기본 Protein
-            for (int i = 2; i < 5; i++)
+            for (int i = 2; i < VoxelDatabase.TypeCount; i++)
                 if (counts[i] > counts[best]) best = i;
             return (VoxelType)best;
         }
@@ -370,11 +396,11 @@ namespace BioBreach.Engine.MarchingCubes
         /// </summary>
         public float[] ModifyDensity(Vector3 worldPoint, float radius, float strength, VoxelType placeType = VoxelType.Air)
         {
-            if (!_isInitialized) return new float[5];
+            if (!_isInitialized) return new float[VoxelDatabase.TypeCount];
 
             Vector3 localPoint = worldPoint - _chunkOffset;
             bool    modified = false;
-            float[] totalDugByType = new float[5];
+            float[] totalDugByType = new float[VoxelDatabase.TypeCount];
 
             int radiusVoxels = Mathf.CeilToInt(radius / _voxelSize) + 1;
 

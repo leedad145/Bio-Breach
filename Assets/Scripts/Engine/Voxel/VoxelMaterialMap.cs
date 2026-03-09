@@ -15,8 +15,8 @@ namespace BioBreach.Engine.Voxel
     [CreateAssetMenu(fileName = "VoxelMaterialMap", menuName = "BioBreach/VoxelMaterialMap")]
     public class VoxelMaterialMap : ScriptableObject
     {
-        [Tooltip("인덱스 = (int)VoxelType\n[0] Air (미사용)\n[1] Protein\n[2] Iron\n[3] Calcium\n[4] GeneticEssence")]
-        public Material[] materials = new Material[5];
+        [Tooltip("인덱스 = (int)VoxelType\n[0] Air (미사용)\n[1] Protein\n[2] Iron\n[3] Calcium\n[4] GeneticEssence\n[5] Lipid\n[6] Marrow\n[7] Wall")]
+        public Material[] materials = new Material[8];
 
         public Material GetMaterial(VoxelType type)
         {

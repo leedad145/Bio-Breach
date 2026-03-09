@@ -15,5 +15,8 @@ namespace BioBreach.Core.Voxel
         Iron           = 2,   // 철분        - 혈관/혈액 조직, 구조 보강재
         Calcium        = 3,   // 칼슘        - 골격 조직, 기본 능력·골격 강화
         GeneticEssence = 4,   // 유전자 정수 - 희귀 핵산 물질, 특수 기술 재료
+        Lipid          = 5,   // 지방        - 지방 조직, 에너지 저장재 (흔함)
+        Marrow         = 6,   // 골수        - 칼슘(뼈) 내부에서만 생성, 희귀 재료
+        Wall           = 7,   // 생체막      - 맵 외부 경계, 파괴 불가
     }
 }

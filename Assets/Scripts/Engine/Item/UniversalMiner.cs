@@ -13,7 +13,7 @@ namespace BioBreach.Engine.Item
         public float      editStrength = 0.3f;
         public ItemBase[] voxelDrops;
 
-        private readonly float[] _accumulation = new float[5]; // 인덱스 = (int)VoxelType
+        private readonly float[] _accumulation = new float[VoxelDatabase.TypeCount]; // 인덱스 = (int)VoxelType
         public float[] Accumulation => _accumulation;
 
         public override ActionResult Action1(IPlayerContext ctx)
