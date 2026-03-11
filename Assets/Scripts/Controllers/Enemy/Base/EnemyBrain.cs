@@ -47,7 +47,7 @@ namespace BioBreach.Controller.Enemy.Base
 
                 case EnemyState.Attack:
 
-                    if (!_enemy.IsTargetInAttackRange(target))
+                    if (target == null || !_enemy.IsTargetInAttackRange(target))
                         _state = EnemyState.Chase;
 
                     break;

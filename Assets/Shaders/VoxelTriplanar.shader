@@ -3,21 +3,45 @@
 // URP Triplanar shader for Marching Cubes voxel terrain.
 // UV-less: uses world-space position for texture projection on all 3 axes.
 // Normal mapping via Ben Golus Whiteout triplanar blend (world-space output).
+// Maps: Albedo, Normal (n), Roughness (r), Height (ht), Emission (em),
+//       Clear Coat (c), Ambient Occlusion (ao)
 // =============================================================================
 
 Shader "BioBreach/VoxelTriplanar"
 {
     Properties
     {
-        _BaseColor      ("Base Color",              Color)          = (1,1,1,1)
-        _BaseMap        ("Base Map",                2D)             = "white" {}
-        _BumpMap        ("Normal Map",              2D)             = "bump"  {}
-        _BumpScale      ("Normal Scale",            Range(0,4))     = 4.0
-        _Metallic       ("Metallic",                Range(0,1))     = 0.0
-        _Smoothness     ("Smoothness",              Range(0,1))     = 0.5
-        _EmissionColor  ("Emission Color",          Color)          = (0,0,0,0)
-        _Tiling         ("Tiling",                  Float)          = 0.1
-        _BlendSharpness ("Blend Sharpness",         Range(1,16))    = 4.0
+        _BaseColor           ("Base Color",            Color)         = (1,1,1,1)
+        _BaseMap             ("Base Map",              2D)            = "white" {}
+
+        [Normal]
+        _BumpMap             ("Normal Map (n)",        2D)            = "bump"  {}
+        _BumpScale           ("Normal Scale",          Range(0,4))    = 4.0
+
+        _RoughnessMap        ("Roughness Map (r)",     2D)            = "black" {}
+        // R 채널 = roughness (0=smooth, 1=rough). black 기본 → _Smoothness 그대로 사용.
+        _Metallic            ("Metallic",              Range(0,1))    = 0.0
+        _Smoothness          ("Smoothness (max)",      Range(0,1))    = 0.5
+
+        _HeightMap           ("Height Map (ht)",       2D)            = "black" {}
+        // R 채널로 블렌드 경계 샤프닝. black → 기존 normal-power 블렌드와 동일.
+        _HeightScale         ("Height Blend Scale",    Range(0,1))    = 0.3
+
+        _EmissionMap         ("Emission Map (em)",     2D)            = "black" {}
+        _EmissionColor       ("Emission Color",        Color)         = (0,0,0,0)
+        _EmissionIntensity   ("Emission Intensity",    Range(0,8))    = 1.0
+
+        _ClearCoatMap        ("Clear Coat Map (c)",    2D)            = "black" {}
+        // R 채널 = 클리어코트 마스크. GGX 하이라이트 레이어 추가.
+        _ClearCoatStrength   ("Clear Coat Strength",   Range(0,1))    = 0.0
+        _ClearCoatRoughness  ("Clear Coat Roughness",  Range(0,1))    = 0.1
+
+        _OcclusionMap        ("Occlusion Map (ao)",    2D)            = "white" {}
+        // R 채널 = AO (1=밝음, 0=가려짐). white 기본 → AO 없음.
+        _OcclusionStrength   ("AO Strength",           Range(0,1))    = 1.0
+
+        _Tiling              ("Tiling",                Float)         = 0.1
+        _BlendSharpness      ("Blend Sharpness",       Range(1,16))   = 4.0
     }
 
     SubShader
@@ -54,8 +78,13 @@ Shader "BioBreach/VoxelTriplanar"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
-            TEXTURE2D(_BaseMap); SAMPLER(sampler_BaseMap);
-            TEXTURE2D(_BumpMap); SAMPLER(sampler_BumpMap);
+            TEXTURE2D(_BaseMap);        SAMPLER(sampler_BaseMap);
+            TEXTURE2D(_BumpMap);        SAMPLER(sampler_BumpMap);
+            TEXTURE2D(_RoughnessMap);   SAMPLER(sampler_RoughnessMap);
+            TEXTURE2D(_HeightMap);      SAMPLER(sampler_HeightMap);
+            TEXTURE2D(_EmissionMap);    SAMPLER(sampler_EmissionMap);
+            TEXTURE2D(_ClearCoatMap);   SAMPLER(sampler_ClearCoatMap);
+            TEXTURE2D(_OcclusionMap);   SAMPLER(sampler_OcclusionMap);
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseColor;
@@ -64,6 +93,11 @@ Shader "BioBreach/VoxelTriplanar"
                 float  _BumpScale;
                 float  _Metallic;
                 float  _Smoothness;
+                float  _HeightScale;
+                float  _EmissionIntensity;
+                float  _ClearCoatStrength;
+                float  _ClearCoatRoughness;
+                float  _OcclusionStrength;
                 float  _Tiling;
                 float  _BlendSharpness;
             CBUFFER_END
@@ -114,7 +148,24 @@ Shader "BioBreach/VoxelTriplanar"
             }
 
             // -----------------------------------------------------------------
-            // Triplanar albedo: sample BaseMap on YZ, XZ, XY planes and blend
+            // Blend weights: normal-power + height-based sharpening
+            // Height map R채널을 w에 더해 면 경계를 자연스럽게 샤프닝
+            // -----------------------------------------------------------------
+            float3 ComputeWeights(float3 worldNormal, float3 worldPos)
+            {
+                float3 w = pow(abs(worldNormal), _BlendSharpness);
+
+                float hx = SAMPLE_TEXTURE2D(_HeightMap, sampler_HeightMap, worldPos.yz * _Tiling).r;
+                float hy = SAMPLE_TEXTURE2D(_HeightMap, sampler_HeightMap, worldPos.xz * _Tiling).r;
+                float hz = SAMPLE_TEXTURE2D(_HeightMap, sampler_HeightMap, worldPos.xy * _Tiling).r;
+                w += float3(hx, hy, hz) * _HeightScale;
+
+                w /= dot(w, float3(1, 1, 1));
+                return w;
+            }
+
+            // -----------------------------------------------------------------
+            // Albedo
             // -----------------------------------------------------------------
             half4 SampleAlbedo(float3 worldPos, float3 w)
             {
@@ -125,8 +176,7 @@ Shader "BioBreach/VoxelTriplanar"
             }
 
             // -----------------------------------------------------------------
-            // Triplanar normal — Ben Golus Whiteout blend → world space output
-            // No mesh tangents required.
+            // Normal (n) — Ben Golus Whiteout blend → world space
             // -----------------------------------------------------------------
             float3 SampleNormalWS(float3 worldPos, float3 worldNormal, float3 w)
             {
@@ -143,6 +193,78 @@ Shader "BioBreach/VoxelTriplanar"
             }
 
             // -----------------------------------------------------------------
+            // Roughness (r) — R채널 = roughness, smoothness = _Smoothness * (1-r)
+            // black 기본값이면 roughness=0 → smoothness = _Smoothness 그대로 유지
+            // -----------------------------------------------------------------
+            float SampleSmoothness(float3 worldPos, float3 w)
+            {
+                float rx = SAMPLE_TEXTURE2D(_RoughnessMap, sampler_RoughnessMap, worldPos.yz * _Tiling).r;
+                float ry = SAMPLE_TEXTURE2D(_RoughnessMap, sampler_RoughnessMap, worldPos.xz * _Tiling).r;
+                float rz = SAMPLE_TEXTURE2D(_RoughnessMap, sampler_RoughnessMap, worldPos.xy * _Tiling).r;
+                float roughness = rx * w.x + ry * w.y + rz * w.z;
+                return _Smoothness * (1.0 - roughness);
+            }
+
+            // -----------------------------------------------------------------
+            // Emission (em)
+            // -----------------------------------------------------------------
+            half3 SampleEmission(float3 worldPos, float3 w)
+            {
+                half3 ex = SAMPLE_TEXTURE2D(_EmissionMap, sampler_EmissionMap, worldPos.yz * _Tiling).rgb;
+                half3 ey = SAMPLE_TEXTURE2D(_EmissionMap, sampler_EmissionMap, worldPos.xz * _Tiling).rgb;
+                half3 ez = SAMPLE_TEXTURE2D(_EmissionMap, sampler_EmissionMap, worldPos.xy * _Tiling).rgb;
+                return (ex * w.x + ey * w.y + ez * w.z) * _EmissionColor.rgb * _EmissionIntensity;
+            }
+
+            // -----------------------------------------------------------------
+            // Ambient Occlusion (ao) — R채널, _OcclusionStrength로 세기 조절
+            // white 기본값 → occlusion=1 (영향 없음)
+            // -----------------------------------------------------------------
+            float SampleOcclusion(float3 worldPos, float3 w)
+            {
+                float ox = SAMPLE_TEXTURE2D(_OcclusionMap, sampler_OcclusionMap, worldPos.yz * _Tiling).r;
+                float oy = SAMPLE_TEXTURE2D(_OcclusionMap, sampler_OcclusionMap, worldPos.xz * _Tiling).r;
+                float oz = SAMPLE_TEXTURE2D(_OcclusionMap, sampler_OcclusionMap, worldPos.xy * _Tiling).r;
+                float ao = ox * w.x + oy * w.y + oz * w.z;
+                return lerp(1.0, ao, _OcclusionStrength);
+            }
+
+            // -----------------------------------------------------------------
+            // Clear Coat (c) — R채널 마스크 × GGX 하이라이트 (IOR≈1.5, F0=0.04)
+            // black 기본값 + ClearCoatStrength=0 → 비활성
+            // -----------------------------------------------------------------
+            float SampleClearCoatMask(float3 worldPos, float3 w)
+            {
+                float cx = SAMPLE_TEXTURE2D(_ClearCoatMap, sampler_ClearCoatMap, worldPos.yz * _Tiling).r;
+                float cy = SAMPLE_TEXTURE2D(_ClearCoatMap, sampler_ClearCoatMap, worldPos.xz * _Tiling).r;
+                float cz = SAMPLE_TEXTURE2D(_ClearCoatMap, sampler_ClearCoatMap, worldPos.xy * _Tiling).r;
+                return cx * w.x + cy * w.y + cz * w.z;
+            }
+
+            half3 ComputeClearCoat(float3 normalWS, float3 viewDirWS, float4 shadowCoord, float ccMask)
+            {
+                if (ccMask < 0.001 || _ClearCoatStrength < 0.001)
+                    return (half3)0;
+
+                Light mainLight = GetMainLight(shadowCoord);
+                float3 H   = SafeNormalize(mainLight.direction + viewDirWS);
+                float  NoH = saturate(dot(normalWS, H));
+                float  VoH = saturate(dot(viewDirWS, H));
+
+                float a  = max(_ClearCoatRoughness * _ClearCoatRoughness, 0.002);
+                float a2 = a * a;
+                float d  = (NoH * a2 - NoH) * NoH + 1.0;
+                float D  = a2 / (PI * d * d + 1e-7);
+
+                // Schlick Fresnel (F0=0.04)
+                float F = 0.04 + 0.96 * pow(1.0 - VoH, 5.0);
+
+                return (half3)(ccMask * _ClearCoatStrength * F * D
+                    * mainLight.color * mainLight.distanceAttenuation
+                    * mainLight.shadowAttenuation);
+            }
+
+            // -----------------------------------------------------------------
             half4 frag(Varyings IN) : SV_Target
             {
                 UNITY_SETUP_INSTANCE_ID(IN);
@@ -151,25 +273,25 @@ Shader "BioBreach/VoxelTriplanar"
                 float3 worldNormal = normalize(IN.normalWS);
                 float3 worldPos    = IN.positionWS;
 
-                // Blend weights: steeper angle = stronger weight
-                float3 w = pow(abs(worldNormal), _BlendSharpness);
-                w /= dot(w, float3(1, 1, 1));
+                // Height-adjusted blend weights
+                float3 w = ComputeWeights(worldNormal, worldPos);
 
-                half4  albedo   = SampleAlbedo(worldPos, w) * _BaseColor;
-                float3 normalWS = SampleNormalWS(worldPos, worldNormal, w);
+                half4  albedo     = SampleAlbedo(worldPos, w) * _BaseColor;
+                float3 normalWS   = SampleNormalWS(worldPos, worldNormal, w);
+                float  smoothness = SampleSmoothness(worldPos, w);
+                float  occlusion  = SampleOcclusion(worldPos, w);
+                half3  emission   = SampleEmission(worldPos, w);
 
-                // SurfaceData
                 SurfaceData sd;
                 ZERO_INITIALIZE(SurfaceData, sd);
                 sd.albedo     = albedo.rgb;
                 sd.alpha      = 1.0;
                 sd.metallic   = _Metallic;
-                sd.smoothness = _Smoothness;
-                sd.normalTS   = float3(0, 0, 1); // not used (world-space normal used directly)
-                sd.occlusion  = 1.0;
-                sd.emission   = _EmissionColor.rgb;
+                sd.smoothness = smoothness;
+                sd.normalTS   = float3(0, 0, 1); // world-space normal used directly
+                sd.occlusion  = occlusion;
+                sd.emission   = emission;
 
-                // InputData
                 InputData id;
                 ZERO_INITIALIZE(InputData, id);
                 id.positionWS      = worldPos;
@@ -191,7 +313,12 @@ Shader "BioBreach/VoxelTriplanar"
                 id.shadowMask              = half4(1, 1, 1, 1);
 
                 half4 color = UniversalFragmentPBR(id, sd);
-                color.rgb   = MixFog(color.rgb, id.fogCoord);
+
+                // Clear Coat 레이어 — 기본 PBR 위에 추가 하이라이트
+                float ccMask = SampleClearCoatMask(worldPos, w);
+                color.rgb += ComputeClearCoat(normalWS, id.viewDirectionWS, id.shadowCoord, ccMask);
+
+                color.rgb = MixFog(color.rgb, id.fogCoord);
                 return color;
             }
             ENDHLSL
@@ -227,6 +354,11 @@ Shader "BioBreach/VoxelTriplanar"
                 float  _BumpScale;
                 float  _Metallic;
                 float  _Smoothness;
+                float  _HeightScale;
+                float  _EmissionIntensity;
+                float  _ClearCoatStrength;
+                float  _ClearCoatRoughness;
+                float  _OcclusionStrength;
                 float  _Tiling;
                 float  _BlendSharpness;
             CBUFFER_END
@@ -304,6 +436,11 @@ Shader "BioBreach/VoxelTriplanar"
                 float  _BumpScale;
                 float  _Metallic;
                 float  _Smoothness;
+                float  _HeightScale;
+                float  _EmissionIntensity;
+                float  _ClearCoatStrength;
+                float  _ClearCoatRoughness;
+                float  _OcclusionStrength;
                 float  _Tiling;
                 float  _BlendSharpness;
             CBUFFER_END

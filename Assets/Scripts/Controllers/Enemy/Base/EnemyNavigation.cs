@@ -71,6 +71,9 @@ namespace BioBreach.Controller.Enemy.Base
 
         void RequestPath(Vector3 start, Vector3 goal, LayerMask mask)
         {
+            // 지형이 변경됐을 수 있으므로 매 경로 탐색마다 캐시 초기화
+            _heightCache.Clear();
+
             var path = AStar(start, goal, mask);
 
             if (path != null && path.Count > 0)

@@ -39,7 +39,6 @@ namespace BioBreach.Controller.Enemy
         public WorldManager worldManager;
         ////////////////////////////
         EnemyBrain brain;
-        EnemyNavigation navigation;
         EnemyAction action;
         public EntityMonoBehaviour CurrentTarget => _currentTarget;
 
@@ -54,7 +53,6 @@ namespace BioBreach.Controller.Enemy
         [HideInInspector] public float           digRadius      = 3f;
         [HideInInspector] public float           digStrength    = 2f;
         [HideInInspector] public float           jumpSpeed      = 7f;
-        [HideInInspector] public float[]         jumpAngles     = { 20f, 35f, 50f };
 
         // =====================================================================
         // 스포너 스케일링 (EnemySpawner가 Start 이전에 주입)
@@ -113,18 +111,24 @@ namespace BioBreach.Controller.Enemy
 
         const float JUMP_COOLDOWN = 0.8f;
 
-        const float RAY_LOW = 0.3f;
-        const float RAY_MID = 1.0f;
-        const float RAY_HIGH = 1.8f;
+        // ── Stuck 감지 ──────────────────────────────────────────────────────────
+        Vector3 _stuckCheckPos;
+        float   _stuckCheckTimer;
+        bool    _isStuck;
+        const float STUCK_CHECK_INTERVAL = 0.3f;
+        const float STUCK_MIN_DIST_SQ    = 0.09f;
+
+        // ── 파기 전용 쿨타임 (공격 쿨타임과 분리) ──────────────────────────────
+        float       _lastDigTime;
+        const float DIG_COOLDOWN = 0.4f;
+
+        const float RAY_LOW  = -0.5f; // 지면 바로 위 — 낮은 단차 확실히 감지
+        const float RAY_MID  = 0f;  // 1 voxel 내부 중심 — Jump/Wall 분기점
+        const float RAY_HIGH = 0.5f;  // 1 voxel 위(>1.0), 2 voxel 내부(<2.0) — Wall 판정
 
         // ── 최적화용 캐시 ──────────────────────────────────────────────────────
         float   _lastTargetTime  = -999f;
         const float TARGET_INTERVAL = 0.25f;   // 타겟 선택 간격 (초)
-
-        float   _blockCacheTime  = -999f;
-        const float BLOCK_INTERVAL  = 0.1f;    // SphereCast 캐시 유효 시간 (초)
-        bool    _cachedBlocking;
-        Vector3 _cachedBlockPoint;
 
         [Inject]
         public void Construct(EnemyRepository enemyRepo) => _enemyRepo = enemyRepo;
@@ -135,6 +139,7 @@ namespace BioBreach.Controller.Enemy
 
         protected override void Start()
         {
+            base.Start();
             // JSON 데이터 적용 (Inspector 기본값을 덮어씀)
             // OnNetworkSpawn 이전에 maxHp 스케일링을 반영하기 위해 Start에서 처리
             if (!string.IsNullOrEmpty(dataId) && _enemyRepo != null)
@@ -176,7 +181,6 @@ namespace BioBreach.Controller.Enemy
 
             _cc = GetComponent<CharacterController>();
             brain = new EnemyBrain(this);
-            navigation = new EnemyNavigation();
             action = new EnemyAction(this);
 
             if (!IsServer)
@@ -296,12 +300,6 @@ namespace BioBreach.Controller.Enemy
             return (transform.position - target.transform.position).sqrMagnitude
                 <= attackRange * attackRange;
         }
-        public bool IsPathBlocked()
-        {
-            Vector3 dir = transform.forward;
-            return IsVoxelBlocking(dir, out _);
-        }
-        
         public void MoveToward(Vector3 targetPos)
         {
             Vector3 diff = targetPos - transform.position;
@@ -314,11 +312,31 @@ namespace BioBreach.Controller.Enemy
             if (dir.sqrMagnitude < 0.001f)
                 return;
 
-            if (CheckObstacle(dir, out ObstacleType type))
+            // ── Stuck 감지: 0.3초마다 위치 변화 측정 ─────────────────────────
+            _stuckCheckTimer += Time.deltaTime;
+            if (_stuckCheckTimer >= STUCK_CHECK_INTERVAL)
+            {
+                _isStuck = (transform.position - _stuckCheckPos).sqrMagnitude < STUCK_MIN_DIST_SQ;
+                _stuckCheckPos  = transform.position;
+                _stuckCheckTimer = 0f;
+            }
+
+            bool obstacleDetected = CheckObstacle(dir, out ObstacleType type);
+
+            // Stuck 상태: 무조건 파기
+            if (_isStuck)
+            {
+                type             = ObstacleType.Wall;
+                obstacleDetected = true;
+                _isStuck         = false;
+            }
+
+            if (obstacleDetected)
             {
                 if (type == ObstacleType.Jump)
                 {
                     TryJump();
+                    _cc.Move(dir * moveSpeed * Time.deltaTime);
                 }
                 else if (type == ObstacleType.Wall)
                 {
@@ -346,33 +364,19 @@ namespace BioBreach.Controller.Enemy
 
             Vector3 basePos = transform.position;
 
-            bool low =
-                Physics.Raycast(basePos + Vector3.up * RAY_LOW, dir, dist);
+            // defenseLayer 제외: 방어 유닛을 지형 장애물로 오인하지 않음
+            int terrainMask = ~defenseLayer;
 
-            bool mid =
-                Physics.Raycast(basePos + Vector3.up * RAY_MID, dir, dist);
+            bool low  = Physics.Raycast(basePos + Vector3.up * RAY_LOW,  dir, dist, terrainMask);
+            bool mid  = Physics.Raycast(basePos + Vector3.up * RAY_MID,  dir, dist, terrainMask);
+            bool high = Physics.Raycast(basePos + Vector3.up * RAY_HIGH, dir, dist, terrainMask);
 
-            bool high =
-                Physics.Raycast(basePos + Vector3.up * RAY_HIGH, dir, dist);
+            if (low && mid && !high) { type = ObstacleType.Jump; return true; }
+            if (low && mid && high)  { type = ObstacleType.Wall; return true; }
 
-            if (!low)
-                return false;
-
-            if (low && !mid)
-                return false;
-
-            if (low && mid && !high)
-            {
-                type = ObstacleType.Jump;
-                return true;
-            }
-
-            if (low && mid && high)
-            {
-                type = ObstacleType.Wall;
-                return true;
-            }
-
+            // low && !mid: stepOffset 범위 내 낮은 단차 → CC가 자동 처리
+            // !low: 장애물 없음
+            // 나머지 엣지케이스는 Stuck 감지(CapsuleCast)가 처리
             return false;
         }
         
@@ -396,46 +400,24 @@ namespace BioBreach.Controller.Enemy
         public void TryDigToward(Vector3 diff)
         {
             if (worldManager == null || digStrength <= 0f) return;
-            if (Time.time - _lastActionTime < attackCooldown) return;
+            if (Time.time - _lastDigTime < DIG_COOLDOWN) return; // 공격 쿨타임과 분리
 
             Vector3 hDir = new Vector3(diff.x, 0f, diff.z).normalized;
-            Vector3 vDir = new Vector3(0f, diff.y, 0f).normalized;
+            if (hDir.sqrMagnitude < 0.001f) return;
 
-            bool dug = false;
-            if (hDir.sqrMagnitude > 0.001f && IsVoxelBlocking(hDir, out Vector3 hp))
+            // 레이캐스트 없이 몸 앞 _cc.radius 거리에서 3개 높이를 무조건 파냄.
+            // 공기든 지형이든 관계없이 파기 → 작은 구멍도 점점 커짐.
+            // center.y=0 기준: 발(0) ~ 머리(RAY_HIGH)를 세 높이로 커버
+            float digForward = _cc.radius + 0.3f;
+            float[] heights  = { RAY_LOW, RAY_MID, RAY_HIGH };
+
+            foreach (float h in heights)
             {
-                worldManager.ModifyTerrain(hp, digRadius, digStrength, VoxelType.Air);
-                dug = true;
-            }
-            if (vDir.sqrMagnitude > 0.001f && IsVoxelBlocking(vDir, out Vector3 vp))
-            {
-                worldManager.ModifyTerrain(vp, digRadius, digStrength, VoxelType.Air);
-                dug = true;
+                Vector3 point = transform.position + Vector3.up * h + hDir * digForward;
+                worldManager.ModifyTerrain(point, digRadius, digStrength, VoxelType.Air);
             }
 
-            if (dug) _lastActionTime = Time.time;
-        }
-
-        /// <summary>
-        /// 이동 방향으로 SphereCast(반경 = digRadius) 후 Voxel(MeshCollider)이 막고 있으면 true.
-        /// <paramref name="blockPoint"/>: 파기 목표점 (Voxel 내부 약간).
-        /// </summary>
-        bool IsVoxelBlocking(Vector3 dir, out Vector3 blockPoint)
-        {
-            blockPoint = Vector3.zero;
-
-            float checkDist = _cc.radius + 1.5f;
-            Vector3 origin    = transform.position + _cc.center;
-
-            if (!Physics.SphereCast(origin, digRadius, dir, out RaycastHit hit, checkDist,
-                    ~0, QueryTriggerInteraction.Ignore))
-                return false;
-
-            // MeshCollider = 청크 지형, 그 외는 엔티티 또는 기타 콜라이더
-            if (hit.collider is not MeshCollider) return false;
-
-            blockPoint = hit.point - hit.normal * 0.1f; // Voxel 내부 진입점
-            return true;
+            _lastDigTime = Time.time;
         }
 
         // =====================================================================
@@ -500,16 +482,7 @@ namespace BioBreach.Controller.Enemy
         }
 
         /// <summary>Exploder: 사망 시 범위 폭발</summary>
-        void ExplodeOnDeath()
-        {
-            var hits = Physics.OverlapSphere(transform.position, _explosionRadius, defenseLayer);
-            foreach (var hit in hits)
-            {
-                var entity = hit.GetComponent<EntityMonoBehaviour>();
-                if (entity != null && entity.IsAlive)
-                    entity.TakeDamage(_explosionDamage);
-            }
-        }
+        void ExplodeOnDeath() => TryAoeStomp();
 
         // =====================================================================
         // 공격
@@ -552,15 +525,15 @@ namespace BioBreach.Controller.Enemy
 
             // LOW RAY (발)
             Gizmos.color = Color.red;
-            Gizmos.DrawRay(basePos + Vector3.up * 0.3f, dir * dist);
+            Gizmos.DrawRay(basePos + Vector3.up * RAY_LOW, dir * dist);
 
             // MID RAY (가슴)
             Gizmos.color = Color.yellow;
-            Gizmos.DrawRay(basePos + Vector3.up * 1.0f, dir * dist);
+            Gizmos.DrawRay(basePos + Vector3.up * RAY_MID, dir * dist);
 
             // HIGH RAY (머리)
             Gizmos.color = Color.green;
-            Gizmos.DrawRay(basePos + Vector3.up * 1.8f, dir * dist);
+            Gizmos.DrawRay(basePos + Vector3.up * RAY_HIGH, dir * dist);
         }
     }
 }

@@ -14,10 +14,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: BioBreach.Engine::BioBreach.Engine.Voxel.VoxelMaterialMap
   materials:
   - {fileID: 0}
-  - {fileID: 2100000, guid: 29ab969c9e071d14eba497dec283f657, type: 2}
-  - {fileID: 2100000, guid: 008c3814f5dade1488d5513272a199ae, type: 2}
+  - {fileID: 2100000, guid: 83bee9efc03f3e34e92f0e68f6117f79, type: 2}
+  - {fileID: 2100000, guid: 614a3f398487def4bbf8790b66ebae0a, type: 2}
   - {fileID: 2100000, guid: fc3948710d40ecf4cbacdb04d381a701, type: 2}
   - {fileID: 2100000, guid: 55bfb5dbc0fb923459cabe99dcccde9d, type: 2}
-  - {fileID: 2100000, guid: 1ef40d1ac9881914d9f39ebcb6add73e, type: 2}
+  - {fileID: 2100000, guid: 6dd0826a26a40dc40a7bc109ca5f5d69, type: 2}
   - {fileID: 2100000, guid: 30e5d3794db843449a5cfc562b1625e5, type: 2}
   - {fileID: 2100000, guid: 6c162d89c490c1942bc8557cd8e7e595, type: 2}

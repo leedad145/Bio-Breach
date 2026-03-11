@@ -26,6 +26,7 @@ namespace BioBreach.Controller.Enemy.Base
             _enemy = enemy;
             _nav = new EnemyNavigation();
             _wanderTarget = enemy.transform.position;
+            _smoothMoveTarget = enemy.transform.position;
         }
 
         public void Tick(EnemyState state)
