@@ -34,10 +34,6 @@ namespace BioBreach.Engine.Data
         public float meleeAttackReach  = 3f;
         public float meleeAttackRadius = 1.5f;
 
-        // ── UniversalMiner ────────────────────────────────────────────────────
-        // 인덱스 = (int)VoxelType. 0=Air(빈 문자열), 1=Protein, 2=Iron, 3=Calcium, 4=GeneticEssence
-        public string[] voxelDropIds;
-
         // ── Equippable ────────────────────────────────────────────────────────
         // equipSlot: "Head" | "Chest" | "Hands" | "Legs" | "Feet"
         public string equipSlot         = "Chest";

@@ -51,11 +51,6 @@ namespace BioBreach.UI.Lobbies
         #region Custom properties
         const string LEVEL_IDENTIFIER = "Level";
 
-        enum Level
-        {
-            None,
-            WhackAPig,
-        }
         #endregion
         private void OnEnable()
         {
@@ -181,10 +176,6 @@ namespace BioBreach.UI.Lobbies
                 Name = roomName,
                 IsPrivate = isPrivate,
                 MaxPlayers = maxPlayers,
-                SessionProperties = new Dictionary<string, SessionProperty>
-                {
-                    { LEVEL_IDENTIFIER, new SessionProperty(Level.WhackAPig.ToString()) },
-                },
             };
             options.WithRelayNetwork(); // Host-Client 구조 (IsServer 기반 코드와 호환)
             

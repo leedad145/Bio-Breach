@@ -11,17 +11,7 @@ namespace BioBreach.Engine.Data.Builders
             var item = new UniversalMiner();
             item.editRadius   = data.editRadius;
             item.editStrength = data.editStrength;
-
-            if (data.voxelDropIds != null && data.voxelDropIds.Length > 0)
-            {
-                item.voxelDrops = new ItemBase[data.voxelDropIds.Length];
-                for (int i = 0; i < data.voxelDropIds.Length; i++)
-                {
-                    var dropId = data.voxelDropIds[i];
-                    if (!string.IsNullOrEmpty(dropId))
-                        item.voxelDrops[i] = repository.CreateItem(dropId);
-                }
-            }
+            // voxelDrops는 PlayerController.voxelDropIds 에서 중앙 관리된다.
             return item;
         }
     }

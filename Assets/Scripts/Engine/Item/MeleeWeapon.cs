@@ -1,33 +1,21 @@
 // =============================================================================
-// MeleeWeapon.cs - 플레이어 근접 무기
+// MeleeWeapon.cs - 공격 능력 강화 아이템 (스탯 컨테이너)
+// 실제 공격 로직은 PlayerController.HandleAction 에서 처리된다.
+// 아이템을 손에 들면 맨손 대비 damage/reach/radius 버프를 준다.
 // =============================================================================
 using UnityEngine;
-using BioBreach.Engine.Entity;
 using BioBreach.Engine.Inventory;
 
 namespace BioBreach.Engine.Item
 {
     public class MeleeWeapon : ItemBase
     {
-        public LayerMask enemyLayer;
-
         public float attackDamage = 25f;
         public float attackReach  = 3f;
         public float attackRadius = 1.5f;
 
-        public override ActionResult Action1(IPlayerContext ctx)
-        {
-            if (!ctx.PrimaryDown) return ActionResult.None;
-            Vector3 center = ctx.AttackOrigin + ctx.AttackDirection * attackReach;
-            foreach (var col in Physics.OverlapSphere(center, attackRadius, enemyLayer))
-            {
-                var entity = col.GetComponent<EntityMonoBehaviour>();
-                if (entity != null && entity.IsAlive)
-                    entity.TakeDamage(attackDamage);
-            }
-            return ActionResult.Done();
-        }
-
+        // 스탯 컨테이너 역할만 하므로 액션은 아무것도 하지 않는다.
+        public override ActionResult Action1(IPlayerContext ctx) => ActionResult.None;
         public override ActionResult Action2(IPlayerContext ctx) => ActionResult.None;
     }
 }

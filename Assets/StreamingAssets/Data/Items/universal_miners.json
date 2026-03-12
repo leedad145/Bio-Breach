@@ -3,13 +3,12 @@
     "id": "basic_miner",
     "type": "UniversalMiner",
     "itemName": "기본 채굴기",
-    "description": "세포 조직을 분해하는 범용 채굴 도구. 모든 복셀 타입을 채굴할 수 있습니다.",
+    "description": "세포 조직을 분해하는 범용 채굴 도구. 맨손보다 넓고 강하게 채굴합니다.",
     "gridWidth": 2,
     "gridHeight": 3,
     "maxStack": 1,
     "editRadius": 3.0,
-    "editStrength": 0.2,
-    "voxelDropIds": [ "", "raw_protein", "raw_iron", "raw_calcium", "raw_genetic_essence", "raw_lipid", "raw_marrow" ]
+    "editStrength": 0.2
   },
   {
     "id": "advanced_miner",
@@ -20,7 +19,6 @@
     "gridHeight": 4,
     "maxStack": 1,
     "editRadius": 4.0,
-    "editStrength": 0.3,
-    "voxelDropIds": [ "", "raw_protein", "raw_iron", "raw_calcium", "raw_genetic_essence", "raw_lipid", "raw_marrow" ]
+    "editStrength": 0.3
   }
 ]
