@@ -1,15 +1,20 @@
 // =============================================================================
 // EnemyController.cs - 면역 세포 적 유닛
 //
-// 변경 사항:
-//  - CharacterController로 물리적 이동 (중력 적용, 지형 충돌)
-//  - WorldManager에 Viewer로 등록 → 주변 1청크 항상 로드
-//  - 이동 경로 앞에 Voxel(MeshCollider) 감지 → 공격으로 제거 후 이동
-//  - NetworkVariable<Vector3/float>로 위치·회전을 서버→클라이언트 동기화
+// 이동: CharacterController(중력·충돌) + NavMeshAgent(경로탐색, position 제어 OFF)
+//       NavMeshAgent.desiredVelocity → CharacterController.Move
+//       NavMesh가 없는 구간(낙하·지형 파괴 직후)은 수동 중력으로 처리
+//
+// 최적화:
+//   - AI 스태거링 : AI_STRIDE(4) 프레임마다 순번(slot)으로 분산
+//   - 타겟 선택   : 0.5 초 간격 + 랜덤 지터(동시 쿼리 방지)
+//   - NetworkSync : sqrMagnitude 임계값 초과 시만 기록
 // =============================================================================
 
 using System;
+using System.Threading;
 using UnityEngine;
+using UnityEngine.AI;
 using VContainer;
 using BioBreach.Controller.Enemy.Base;
 using BioBreach.Engine.Entity;
@@ -21,73 +26,56 @@ using Unity.Netcode;
 
 namespace BioBreach.Controller.Enemy
 {
-
     [RequireComponent(typeof(CharacterController))]
+    [RequireComponent(typeof(NavMeshAgent))]
     public class EnemyController : EntityMonoBehaviour
     {
         // =====================================================================
-        // Inspector 설정
+        // Inspector
         // =====================================================================
 
         [Header("JSON 데이터")]
-        [Tooltip("enemies.json 의 id. 반드시 입력해야 스탯이 적용된다.")]
+        [Tooltip("enemies.json 의 id")]
         public string dataId;
 
         [Header("참조")]
         public LayerMask  defenseLayer;
         public Transform  matriarchTarget;
         public WorldManager worldManager;
-        ////////////////////////////
-        EnemyBrain brain;
-        EnemyAction action;
-        public EntityMonoBehaviour CurrentTarget => _currentTarget;
 
-        // ── 스탯 (JSON에서 로드, Inspector 비공개) ──────────────────────────────
-        [HideInInspector] public float           moveSpeed      = 5f;
-        [HideInInspector] public float           gravityMultiplier = 2f;
-        [HideInInspector] public float           detectionRange = 15f;
-        [HideInInspector] public float           attackRange    = 2f;
-        [HideInInspector] public float           attackDamage   = 10f;
-        [HideInInspector] public float           attackCooldown = 1f;
-        [HideInInspector] public TargetPriority  targetPriority = TargetPriority.Nearest;
-        [HideInInspector] public float           digRadius      = 3f;
-        [HideInInspector] public float           digStrength    = 2f;
-        [HideInInspector] public float           jumpSpeed      = 7f;
+        // ── 스탯 (JSON 로드) ────────────────────────────────────────────────
+        [HideInInspector] public float          moveSpeed         = 5f;
+        [HideInInspector] public float          gravityMultiplier = 2f;
+        [HideInInspector] public float          detectionRange    = 15f;
+        [HideInInspector] public float          attackRange       = 2f;
+        [HideInInspector] public float          attackDamage      = 10f;
+        [HideInInspector] public float          attackCooldown    = 1f;
+        [HideInInspector] public TargetPriority targetPriority    = TargetPriority.Nearest;
+        [HideInInspector] public float          digRadius         = 3f;
+        [HideInInspector] public float          digStrength       = 2f;
 
-        // =====================================================================
-        // 스포너 스케일링 (EnemySpawner가 Start 이전에 주입)
-        // =====================================================================
-
+        // ── 스포너 스케일링 ─────────────────────────────────────────────────
         [HideInInspector] public float hpMultiplier     = 1f;
         [HideInInspector] public float damageMultiplier = 1f;
         [HideInInspector] public float speedMultiplier  = 1f;
         [HideInInspector] public EnemySpawner homeSpawner;
 
-        // =====================================================================
-        // 적 타입 특수 능력 (JSON에서 로드)
-        // =====================================================================
-
+        // ── 적 타입 능력 ────────────────────────────────────────────────────
         enum EnemyType { Normal, Tanker, Exploder, Acid, Healer }
         EnemyType _enemyType = EnemyType.Normal;
 
-        // Tanker & Exploder
         float _explosionRadius = 5f;
         float _explosionDamage = 35f;
-        // Acid
         float _acidInterval    = 2f;
         float _acidRadius      = 3f;
         float _acidDigStrength = 2f;
         float _acidTimer;
-        // Healer
         float _healRadius      = 8f;
         float _healPerSecond   = 8f;
         float _healCooldown    = 2f;
         float _healTimer;
 
-        // =====================================================================
-        // 네트워크 위치 동기화 (Server → 모든 클라이언트)
-        // =====================================================================
-
+        // ── 네트워크 위치 동기화 ────────────────────────────────────────────
         private readonly NetworkVariable<Vector3> _netPos = new(
             Vector3.zero,
             NetworkVariableReadPermission.Everyone,
@@ -103,32 +91,30 @@ namespace BioBreach.Controller.Enemy
         // =====================================================================
 
         CharacterController _cc;
+        NavMeshAgent        _agent;
+        EnemyBrain          _brain;
+        EnemyAction         _action;
+
         float               _velocityY;
-        float               _lastActionTime;   // 공격 + 파기 공유 쿨타임
+        float               _lastAttackTime;
+        float               _lastDigTime;
         EntityMonoBehaviour _currentTarget;
         EnemyRepository     _enemyRepo;
-        float _lastJumpTime;
 
-        const float JUMP_COOLDOWN = 0.8f;
-
-        // ── Stuck 감지 ──────────────────────────────────────────────────────────
-        Vector3 _stuckCheckPos;
-        float   _stuckCheckTimer;
-        bool    _isStuck;
-        const float STUCK_CHECK_INTERVAL = 0.3f;
-        const float STUCK_MIN_DIST_SQ    = 0.09f;
-
-        // ── 파기 전용 쿨타임 (공격 쿨타임과 분리) ──────────────────────────────
-        float       _lastDigTime;
         const float DIG_COOLDOWN = 0.4f;
 
-        const float RAY_LOW  = -0.5f; // 지면 바로 위 — 낮은 단차 확실히 감지
-        const float RAY_MID  = 0f;  // 1 voxel 내부 중심 — Jump/Wall 분기점
-        const float RAY_HIGH = 0.5f;  // 1 voxel 위(>1.0), 2 voxel 내부(<2.0) — Wall 판정
+        // ── 타겟 선택 ───────────────────────────────────────────────────────
+        float _lastTargetTime = -999f;
+        const float TARGET_INTERVAL = 0.5f;
 
-        // ── 최적화용 캐시 ──────────────────────────────────────────────────────
-        float   _lastTargetTime  = -999f;
-        const float TARGET_INTERVAL = 0.25f;   // 타겟 선택 간격 (초)
+        // ── AI 스태거링 ─────────────────────────────────────────────────────
+        // 전체 적을 AI_STRIDE 그룹으로 분산 → 매 프레임 1/AI_STRIDE만 풀 AI 실행
+        const int AI_STRIDE = 4;
+        int       _aiSlot;
+        static int _slotCounter;
+
+        // 공개 프로퍼티 (EnemyAction/EnemyBrain 접근용)
+        public EntityMonoBehaviour CurrentTarget => _currentTarget;
 
         [Inject]
         public void Construct(EnemyRepository enemyRepo) => _enemyRepo = enemyRepo;
@@ -140,34 +126,30 @@ namespace BioBreach.Controller.Enemy
         protected override void Start()
         {
             base.Start();
-            // JSON 데이터 적용 (Inspector 기본값을 덮어씀)
-            // OnNetworkSpawn 이전에 maxHp 스케일링을 반영하기 위해 Start에서 처리
-            if (!string.IsNullOrEmpty(dataId) && _enemyRepo != null)
-            {
-                if (_enemyRepo.TryGet(dataId, out var d))
-                {
-                    maxHp             = d.maxHp;
-                    moveSpeed         = d.moveSpeed;
-                    gravityMultiplier = d.gravityMultiplier;
-                    detectionRange    = d.detectionRange;
-                    attackRange       = d.attackRange;
-                    attackDamage      = d.attackDamage;
-                    attackCooldown    = d.attackCooldown;
-                    targetPriority    = Enum.Parse<TargetPriority>(d.targetPriority, ignoreCase: true);
-                    digRadius         = d.digRadius;
-                    digStrength       = d.digStrength;
 
-                    if (Enum.TryParse(d.enemyType, ignoreCase: true, out EnemyType et))
-                        _enemyType = et;
-                    _explosionRadius  = d.explosionRadius;
-                    _explosionDamage  = d.explosionDamage;
-                    _acidInterval     = d.acidInterval;
-                    _acidRadius       = d.acidRadius;
-                    _acidDigStrength  = d.acidDigStrength;
-                    _healRadius       = d.healRadius;
-                    _healPerSecond    = d.healPerSecond;
-                    _healCooldown     = d.healCooldown;
-                }
+            if (!string.IsNullOrEmpty(dataId) && _enemyRepo != null &&
+                _enemyRepo.TryGet(dataId, out var d))
+            {
+                maxHp             = d.maxHp;
+                moveSpeed         = d.moveSpeed;
+                gravityMultiplier = d.gravityMultiplier;
+                detectionRange    = d.detectionRange;
+                attackRange       = d.attackRange;
+                attackDamage      = d.attackDamage;
+                attackCooldown    = d.attackCooldown;
+                targetPriority    = Enum.Parse<TargetPriority>(d.targetPriority, ignoreCase: true);
+                digRadius         = d.digRadius;
+                digStrength       = d.digStrength;
+
+                if (Enum.TryParse(d.enemyType, ignoreCase: true, out EnemyType et)) _enemyType = et;
+                _explosionRadius  = d.explosionRadius;
+                _explosionDamage  = d.explosionDamage;
+                _acidInterval     = d.acidInterval;
+                _acidRadius       = d.acidRadius;
+                _acidDigStrength  = d.acidDigStrength;
+                _healRadius       = d.healRadius;
+                _healPerSecond    = d.healPerSecond;
+                _healCooldown     = d.healCooldown;
             }
 
             maxHp        *= hpMultiplier;
@@ -177,25 +159,37 @@ namespace BioBreach.Controller.Enemy
 
         public override void OnNetworkSpawn()
         {
-            base.OnNetworkSpawn(); // EntityMonoBehaviour HP 초기화
+            base.OnNetworkSpawn();
 
-            _cc = GetComponent<CharacterController>();
-            brain = new EnemyBrain(this);
-            action = new EnemyAction(this);
+            _cc    = GetComponent<CharacterController>();
+            _agent = GetComponent<NavMeshAgent>();
+            _brain = new EnemyBrain(this);
+            _action = new EnemyAction(this);
 
             if (!IsServer)
             {
-                // 클라이언트는 CharacterController를 끄고 NetworkVariable 위치로만 이동
-                _cc.enabled = false;
+                // 클라이언트: NavMeshAgent·CharacterController 모두 꺼고
+                //             NetworkVariable 위치로만 보간
+                _cc.enabled    = false;
+                _agent.enabled = false;
                 return;
             }
 
             if (worldManager == null)
                 worldManager = FindAnyObjectByType<WorldManager>();
 
-            // 뷰어 등록은 스포너가 담당 — 적 개체는 개별 등록하지 않음
+            // NavMeshAgent 하이브리드 설정
+            // updatePosition/Rotation = false → 우리가 직접 CC로 이동시킴
+            _agent.updatePosition = false;
+            _agent.updateRotation = false;
+            _agent.stoppingDistance = attackRange * 0.9f;
+            _agent.speed = moveSpeed;    // 참조용. 실제 속도는 CC.Move로 제어
+            _agent.avoidancePriority = UnityEngine.Random.Range(30, 70); // 에이전트별 회피 우선순위 랜덤화
 
-            // 스폰 직후 현재 위치를 기록 (클라이언트가 (0,0,0)에서 튀는 것 방지)
+            // AI 업데이트 슬롯 배정
+            _aiSlot = Interlocked.Increment(ref _slotCounter) % AI_STRIDE;
+
+            // 초기 위치 동기화
             _netPos.Value = transform.position;
             _netYaw.Value = transform.eulerAngles.y;
         }
@@ -203,13 +197,11 @@ namespace BioBreach.Controller.Enemy
         public override void OnNetworkDespawn()
         {
             base.OnNetworkDespawn();
-            if (IsServer)
-            {
-                homeSpawner?.ReportEnemyDied(this);
-                // Exploder: 사망 시 범위 폭발
-                if (!IsAlive && _enemyType == EnemyType.Exploder)
-                    ExplodeOnDeath();
-            }
+            if (!IsServer) return;
+
+            if (homeSpawner != null) homeSpawner.ReportEnemyDied(this);
+            if (!IsAlive && _enemyType == EnemyType.Exploder)
+                ExplodeOnDeath();
         }
 
         // =====================================================================
@@ -220,6 +212,7 @@ namespace BioBreach.Controller.Enemy
         {
             if (!IsSpawned) return;
 
+            // ── 클라이언트: NetworkVariable 위치로 보간 ──────────────────
             if (!IsServer)
             {
                 if (_netPos.Value.sqrMagnitude < 0.001f) return;
@@ -229,199 +222,149 @@ namespace BioBreach.Controller.Enemy
                     Quaternion.Slerp(transform.rotation,
                         Quaternion.Euler(0f, _netYaw.Value, 0f),
                         Time.deltaTime * 15f));
-
                 return;
             }
 
             if (!IsAlive) return;
 
-            if (Time.time - _lastTargetTime >= TARGET_INTERVAL)
+            // ── 스태거링된 AI 로직 (target 선택 + brain + action) ────────
+            if (Time.frameCount % AI_STRIDE == _aiSlot)
             {
-                _currentTarget = SelectTarget();
-                _lastTargetTime = Time.time;
+                if (Time.time - _lastTargetTime >= TARGET_INTERVAL)
+                {
+                    _currentTarget  = SelectTarget();
+                    _lastTargetTime = Time.time;
+                }
+                _brain.UpdateBrain();
+                _action.Tick(_brain.CurrentState);
             }
 
-            brain.UpdateBrain();
-
-            // AI 행동 전략은 EnemyAction.Tick()이 상태별로 결정
-            action.Tick(brain.CurrentState);
-
+            // ── 이동 적용 (매 프레임) ────────────────────────────────────
+            ApplyNavMovement();
             ApplyGravity();
             UpdateTypeAbility();
 
+            // ── NavMesh 에이전트 위치 동기화 ─────────────────────────────
+            if (_agent.enabled && _agent.isOnNavMesh)
+                _agent.nextPosition = transform.position;
+
+            // ── 네트워크 위치 기록 ────────────────────────────────────────
             Vector3 pos = transform.position;
-            if ((pos - _netPos.Value).sqrMagnitude > 0.01f)
+            if ((pos - _netPos.Value).sqrMagnitude > 0.04f)  // 0.2m 이상 이동 시만 기록
                 _netPos.Value = pos;
 
             float yaw = transform.eulerAngles.y;
-            if (Mathf.Abs(Mathf.DeltaAngle(yaw, _netYaw.Value)) > 0.5f)
+            if (Mathf.Abs(Mathf.DeltaAngle(yaw, _netYaw.Value)) > 1f)
                 _netYaw.Value = yaw;
         }
 
         // =====================================================================
-        // 중력
+        // 이동
         // =====================================================================
+
+        /// <summary>NavMeshAgent.desiredVelocity를 CharacterController에 적용.</summary>
+        void ApplyNavMovement()
+        {
+            if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
+
+            Vector3 vel = _agent.desiredVelocity;
+            vel.y = 0f;
+            if (vel.sqrMagnitude < 0.01f) return;
+
+            _cc.Move(vel.normalized * (moveSpeed * Time.deltaTime));
+            transform.rotation = Quaternion.LookRotation(vel);
+        }
 
         void ApplyGravity()
         {
-            if (_cc.isGrounded && _velocityY < 0f)
-                _velocityY = -2f;
+            if (_cc == null || !_cc.enabled) return;
 
+            if (_cc.isGrounded && _velocityY < 0f) _velocityY = -2f;
             _velocityY += Physics.gravity.y * gravityMultiplier * Time.deltaTime;
             _cc.Move(Vector3.up * _velocityY * Time.deltaTime);
         }
 
         // =====================================================================
-        // 타겟 선택 — TargetSelector 공유 유틸리티 위임
+        // 공개 NavMesh 헬퍼 (EnemyAction에서 호출)
         // =====================================================================
 
-        EntityMonoBehaviour SelectTarget()
+        /// <summary>NavMesh 목적지 설정. NavMesh가 없으면 무시.</summary>
+        public void SetNavDestination(Vector3 dest)
         {
-            var target = TargetSelector.FindTarget(
-                transform.position,
-                detectionRange,
-                defenseLayer,
-                targetPriority
-            );
-
-            if (target != null)
-                return target;
-
-            if (matriarchTarget != null)
-                return matriarchTarget.GetComponent<EntityMonoBehaviour>();
-
-            return null;
+            if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
+            // 목적지가 크게 달라졌을 때만 SetDestination (내부 경로 재계산 비용 절감)
+            if (!_agent.hasPath || (dest - _agent.destination).sqrMagnitude > 1f)
+                _agent.SetDestination(dest);
         }
-        // =====================================================================
-        // 이동 & Voxel 장애물 처리
-        // =====================================================================
+
+        /// <summary>NavMesh 경로가 막혔거나 유효하지 않으면 true.</summary>
+        public bool IsNavPathBlocked()
+        {
+            return _agent != null && _agent.enabled && _agent.isOnNavMesh &&
+                   (_agent.pathStatus == NavMeshPathStatus.PathPartial ||
+                    _agent.pathStatus == NavMeshPathStatus.PathInvalid);
+        }
+
+        /// <summary>공격 범위 내에 타겟이 있는지 확인.</summary>
         public bool IsTargetInAttackRange(EntityMonoBehaviour target)
         {
             return (transform.position - target.transform.position).sqrMagnitude
-                <= attackRange * attackRange;
-        }
-        public void MoveToward(Vector3 targetPos)
-        {
-            Vector3 diff = targetPos - transform.position;
-
-            if (diff.sqrMagnitude <= attackRange * attackRange)
-                return;
-
-            Vector3 dir = new Vector3(diff.x, 0, diff.z).normalized;
-
-            if (dir.sqrMagnitude < 0.001f)
-                return;
-
-            // ── Stuck 감지: 0.3초마다 위치 변화 측정 ─────────────────────────
-            _stuckCheckTimer += Time.deltaTime;
-            if (_stuckCheckTimer >= STUCK_CHECK_INTERVAL)
-            {
-                _isStuck = (transform.position - _stuckCheckPos).sqrMagnitude < STUCK_MIN_DIST_SQ;
-                _stuckCheckPos  = transform.position;
-                _stuckCheckTimer = 0f;
-            }
-
-            bool obstacleDetected = CheckObstacle(dir, out ObstacleType type);
-
-            // Stuck 상태: 무조건 파기
-            if (_isStuck)
-            {
-                type             = ObstacleType.Wall;
-                obstacleDetected = true;
-                _isStuck         = false;
-            }
-
-            if (obstacleDetected)
-            {
-                if (type == ObstacleType.Jump)
-                {
-                    TryJump();
-                    _cc.Move(dir * moveSpeed * Time.deltaTime);
-                }
-                else if (type == ObstacleType.Wall)
-                {
-                    TryDigToward(diff);
-                }
-            }
-            else
-            {
-                _cc.Move(dir * moveSpeed * Time.deltaTime);
-            }
-
-            transform.rotation = Quaternion.LookRotation(dir);
-        }
-        enum ObstacleType
-        {
-            None,
-            Jump,
-            Wall
-        }
-        bool CheckObstacle(Vector3 dir, out ObstacleType type)
-        {
-            type = ObstacleType.None;
-
-            float dist = _cc.radius + 0.5f;
-
-            Vector3 basePos = transform.position;
-
-            // defenseLayer 제외: 방어 유닛을 지형 장애물로 오인하지 않음
-            int terrainMask = ~defenseLayer;
-
-            bool low  = Physics.Raycast(basePos + Vector3.up * RAY_LOW,  dir, dist, terrainMask);
-            bool mid  = Physics.Raycast(basePos + Vector3.up * RAY_MID,  dir, dist, terrainMask);
-            bool high = Physics.Raycast(basePos + Vector3.up * RAY_HIGH, dir, dist, terrainMask);
-
-            if (low && mid && !high) { type = ObstacleType.Jump; return true; }
-            if (low && mid && high)  { type = ObstacleType.Wall; return true; }
-
-            // low && !mid: stepOffset 범위 내 낮은 단차 → CC가 자동 처리
-            // !low: 장애물 없음
-            // 나머지 엣지케이스는 Stuck 감지(CapsuleCast)가 처리
-            return false;
-        }
-        
-
-        void TryJump()
-        {
-            if (!_cc.isGrounded)
-                return;
-
-            if (Time.time - _lastJumpTime < JUMP_COOLDOWN)
-                return;
-
-            _velocityY = jumpSpeed;
-            _lastJumpTime = Time.time;
+                   <= attackRange * attackRange;
         }
 
-        /// <summary>
-        /// diff 방향으로 Voxel이 막혀 있으면 파낸다. MoveToward에서만 호출.
-        /// 수평 + 수직 두 SphereCast로 위아래 장애물도 처리한다.
-        /// </summary>
+        // =====================================================================
+        // Voxel 파기 (NavMesh 경로 막혔을 때 fallback)
+        // =====================================================================
+
         public void TryDigToward(Vector3 diff)
         {
             if (worldManager == null || digStrength <= 0f) return;
-            if (Time.time - _lastDigTime < DIG_COOLDOWN) return; // 공격 쿨타임과 분리
+            if (Time.time - _lastDigTime < DIG_COOLDOWN) return;
 
             Vector3 hDir = new Vector3(diff.x, 0f, diff.z).normalized;
             if (hDir.sqrMagnitude < 0.001f) return;
 
-            // 레이캐스트 없이 몸 앞 _cc.radius 거리에서 3개 높이를 무조건 파냄.
-            // 공기든 지형이든 관계없이 파기 → 작은 구멍도 점점 커짐.
-            // center.y=0 기준: 발(0) ~ 머리(RAY_HIGH)를 세 높이로 커버
-            float digForward = _cc.radius + 0.3f;
-            float[] heights  = { RAY_LOW, RAY_MID, RAY_HIGH };
-
-            foreach (float h in heights)
+            float forward = (_cc != null ? _cc.radius : 0.5f) + 0.3f;
+            foreach (float h in new[] { -0.5f, 0f, 0.5f })
             {
-                Vector3 point = transform.position + Vector3.up * h + hDir * digForward;
+                Vector3 point = transform.position + Vector3.up * h + hDir * forward;
                 worldManager.ModifyTerrain(point, digRadius, digStrength, VoxelType.Air);
             }
-
             _lastDigTime = Time.time;
         }
 
         // =====================================================================
-        // 타입별 특수 능력
+        // 타겟 선택
+        // =====================================================================
+
+        EntityMonoBehaviour SelectTarget()
+        {
+            var t = TargetSelector.FindTarget(
+                transform.position, detectionRange, defenseLayer, targetPriority);
+
+            if (t != null) return t;
+            return matriarchTarget != null
+                ? matriarchTarget.GetComponent<EntityMonoBehaviour>()
+                : null;
+        }
+
+        // =====================================================================
+        // 공격
+        // =====================================================================
+
+        public void TryAttack(EntityMonoBehaviour target)
+        {
+            if (target == null || !target.IsAlive) return;
+            if ((transform.position - target.transform.position).sqrMagnitude > attackRange * attackRange) return;
+            if (Time.time - _lastAttackTime < attackCooldown) return;
+
+            target.TakeDamage(attackDamage);
+            if (_enemyType == EnemyType.Tanker) TryAoeStomp();
+            _lastAttackTime = Time.time;
+        }
+
+        // =====================================================================
+        // 타입 능력
         // =====================================================================
 
         void UpdateTypeAbility()
@@ -433,7 +376,6 @@ namespace BioBreach.Controller.Enemy
             }
         }
 
-        /// <summary>Acid: 주기적으로 주변 Voxel 지형을 부식</summary>
         void UpdateAcid()
         {
             _acidTimer += Time.deltaTime;
@@ -442,7 +384,6 @@ namespace BioBreach.Controller.Enemy
             worldManager?.ModifyTerrain(transform.position, _acidRadius, _acidDigStrength, VoxelType.Air);
         }
 
-        /// <summary>Healer: 주기적으로 주변 적군 HP 회복</summary>
         void UpdateHealer()
         {
             _healTimer += Time.deltaTime;
@@ -451,12 +392,7 @@ namespace BioBreach.Controller.Enemy
 
             float healAmount = _healPerSecond * _healCooldown;
             float radiusSq   = _healRadius * _healRadius;
-
-            // 스포너의 리스트를 우선 사용 — FindObjectsByType 씬 전체 스캔 방지
-            var allies = homeSpawner != null
-                ? homeSpawner.ActiveEnemyList
-                : null;
-
+            var   allies     = homeSpawner != null ? homeSpawner.ActiveEnemyList : null;
             if (allies == null) return;
 
             for (int i = allies.Count - 1; i >= 0; i--)
@@ -469,7 +405,6 @@ namespace BioBreach.Controller.Enemy
             }
         }
 
-        /// <summary>Tanker: 공격 시 주변 범위 피해 (AOE 슬램)</summary>
         void TryAoeStomp()
         {
             var hits = Physics.OverlapSphere(transform.position, _explosionRadius, defenseLayer);
@@ -481,59 +416,18 @@ namespace BioBreach.Controller.Enemy
             }
         }
 
-        /// <summary>Exploder: 사망 시 범위 폭발</summary>
         void ExplodeOnDeath() => TryAoeStomp();
 
         // =====================================================================
-        // 공격
-        // =====================================================================
-
-        public void TryAttack(EntityMonoBehaviour target)
-        {
-            if (target == null || !target.IsAlive) return;
-            if ((transform.position - target.transform.position).sqrMagnitude > attackRange * attackRange) return;
-            if (Time.time - _lastActionTime < attackCooldown) return;
-
-            target.TakeDamage(attackDamage);
-
-            // Tanker: 공격마다 AOE 슬램 추가
-            if (_enemyType == EnemyType.Tanker)
-                TryAoeStomp();
-
-            _lastActionTime = Time.time;
-        }
-
-        // =====================================================================
-        // 기즈모 (에디터 전용)
+        // 기즈모
         // =====================================================================
 
         void OnDrawGizmosSelected()
         {
             Gizmos.color = Color.red;
             Gizmos.DrawWireSphere(transform.position, detectionRange);
-
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireSphere(transform.position, attackRange);
-
-            if (_cc == null)
-                _cc = GetComponent<CharacterController>();
-
-            Vector3 dir = transform.forward;
-            float dist = _cc != null ? _cc.radius + 0.8f : 1f;
-
-            Vector3 basePos = transform.position;
-
-            // LOW RAY (발)
-            Gizmos.color = Color.red;
-            Gizmos.DrawRay(basePos + Vector3.up * RAY_LOW, dir * dist);
-
-            // MID RAY (가슴)
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawRay(basePos + Vector3.up * RAY_MID, dir * dist);
-
-            // HIGH RAY (머리)
-            Gizmos.color = Color.green;
-            Gizmos.DrawRay(basePos + Vector3.up * RAY_HIGH, dir * dist);
         }
     }
 }

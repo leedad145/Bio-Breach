@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(xargs grep -l \"Collections\")"
+      "Bash(xargs grep -l \"Collections\")",
+      "Bash(find \"c:/Bio-Breach/Library/PackageCache/com.unity.ai.navigation@\"* -name \"*.asmdef.meta\")"
     ]
   }
 }

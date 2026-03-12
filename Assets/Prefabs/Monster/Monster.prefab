@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: -8072141011576632660}
   - component: {fileID: 6725853436499842584}
   - component: {fileID: 4537034403423533112}
+  - component: {fileID: 8101817394766933727}
   m_Layer: 7
   m_Name: Monster
   m_TagString: Untagged
@@ -56,8 +57,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 2146727255
-  InScenePlacedSourceGlobalObjectIdHash: 0
+  GlobalObjectIdHash: 3245942154
+  InScenePlacedSourceGlobalObjectIdHash: 2077564668
   DeferredDespawnTick: 0
   Ownership: 1
   AlwaysReplicateAsRoot: 0
@@ -86,7 +87,7 @@ MonoBehaviour:
   maxHp: 100
   priorityScore: 0
   maxHpBonus: 0
-  dataId: 
+  dataId: neutro_grunt
   defenseLayer:
     serializedVersion: 2
     m_Bits: 64
@@ -101,11 +102,6 @@ MonoBehaviour:
   targetPriority: 0
   digRadius: 2
   digStrength: 1
-  jumpSpeed: 10
-  jumpAngles:
-  - 30
-  - 45
-  - 60
   hpMultiplier: 1
   damageMultiplier: 1
   speedMultiplier: 1
@@ -135,6 +131,28 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!195 &8101817394766933727
+NavMeshAgent:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8014559596637896618}
+  m_Enabled: 1
+  m_AgentTypeID: 0
+  m_Radius: 0.5
+  m_Speed: 3.5
+  m_Acceleration: 8
+  avoidancePriority: 50
+  m_AngularSpeed: 120
+  m_StoppingDistance: 0
+  m_AutoTraverseOffMeshLink: 1
+  m_AutoBraking: 1
+  m_AutoRepath: 1
+  m_Height: 2
+  m_BaseOffset: 0
+  m_WalkableMask: 4294967295
+  m_ObstacleAvoidanceType: 4
 --- !u!1001 &7501699879482046340
 PrefabInstance:
   m_ObjectHideFlags: 0
