@@ -7,7 +7,7 @@ namespace BioBreach.Controller.Enemy.Base
         readonly EnemyController _enemy;
 
         Vector3 _wanderTarget;
-        float   _wanderTimer;
+        float   _lastWanderTime = float.NegativeInfinity;
         const float WANDER_INTERVAL = 4f;
         const float WANDER_RADIUS   = 8f;
 
@@ -30,13 +30,12 @@ namespace BioBreach.Controller.Enemy.Base
         // ── 배회 ─────────────────────────────────────────────────────────────
         void ExecuteIdle()
         {
-            _wanderTimer += Time.deltaTime;
-
+            // Time.time 비교로 스태거링에 영향받지 않는 정확한 간격 유지
             bool reached = (_enemy.transform.position - _wanderTarget).sqrMagnitude < 1f;
-            if (_wanderTimer >= WANDER_INTERVAL || reached)
+            if (Time.time - _lastWanderTime >= WANDER_INTERVAL || reached)
             {
-                _wanderTimer  = 0f;
-                _wanderTarget = RandomWanderPoint();
+                _lastWanderTime = Time.time;
+                _wanderTarget   = RandomWanderPoint();
             }
 
             _enemy.SetNavDestination(_wanderTarget);
@@ -45,16 +44,16 @@ namespace BioBreach.Controller.Enemy.Base
         // ── 추격 ─────────────────────────────────────────────────────────────
         void ExecuteChase()
         {
-            var target = _enemy.CurrentTarget;
-            Vector3 goal = target != null
+            var     target = _enemy.CurrentTarget;
+            Vector3 goal   = target != null
                 ? target.transform.position
                 : _enemy.transform.position;
 
             _enemy.SetNavDestination(goal);
 
-            // NavMesh 경로가 막혔으면 파기 fallback
-            if (_enemy.IsNavPathBlocked())
-                _enemy.TryDigToward(goal - _enemy.transform.position);
+            // 정면 복셀을 무조건 파낸다 (공기여도 OK, 쿨다운 내부에서 제한)
+            // → 벽이 있으면 터널을 만들고, NavMesh 재베이크 후 그 경로를 이용
+            _enemy.TryDigForward();
         }
 
         // ── 공격 ─────────────────────────────────────────────────────────────
@@ -63,7 +62,6 @@ namespace BioBreach.Controller.Enemy.Base
             var target = _enemy.CurrentTarget;
             if (target == null) return;
 
-            // 공격 범위로 계속 접근
             _enemy.SetNavDestination(target.transform.position);
             _enemy.TryAttack(target);
         }

@@ -47,7 +47,7 @@ namespace BioBreach.Controller.Enemy
         [HideInInspector] public float          moveSpeed         = 5f;
         [HideInInspector] public float          gravityMultiplier = 2f;
         [HideInInspector] public float          detectionRange    = 15f;
-        [HideInInspector] public float          attackRange       = 2f;
+        [HideInInspector] public float          attackRange       = 3f;
         [HideInInspector] public float          attackDamage      = 10f;
         [HideInInspector] public float          attackCooldown    = 1f;
         [HideInInspector] public TargetPriority targetPriority    = TargetPriority.Nearest;
@@ -95,11 +95,13 @@ namespace BioBreach.Controller.Enemy
         EnemyBrain          _brain;
         EnemyAction         _action;
 
-        float               _velocityY;
-        float               _lastAttackTime;
-        float               _lastDigTime;
-        EntityMonoBehaviour _currentTarget;
-        EnemyRepository     _enemyRepo;
+        float                  _velocityY;
+        float                  _lastAttackTime;
+        float                  _lastDigTime;
+        EntityMonoBehaviour    _currentTarget;
+        EnemyRepository        _enemyRepo;
+        Vector3                _navDest;          // NavMesh 없을 때 fallback 이동 목적지
+        NavMeshRebakeManager   _rebakeManager;
 
         const float DIG_COOLDOWN = 0.4f;
 
@@ -177,6 +179,7 @@ namespace BioBreach.Controller.Enemy
 
             if (worldManager == null)
                 worldManager = FindAnyObjectByType<WorldManager>();
+            _rebakeManager = FindAnyObjectByType<NavMeshRebakeManager>();
 
             // NavMeshAgent 하이브리드 설정
             // updatePosition/Rotation = false → 우리가 직접 CC로 이동시킴
@@ -262,13 +265,25 @@ namespace BioBreach.Controller.Enemy
         // 이동
         // =====================================================================
 
-        /// <summary>NavMeshAgent.desiredVelocity를 CharacterController에 적용.</summary>
+        /// <summary>NavMeshAgent.desiredVelocity를 CharacterController에 적용.
+        /// NavMesh가 없으면 _navDest를 향해 직접 이동.</summary>
         void ApplyNavMovement()
         {
-            if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
+            if (_agent == null || !_agent.enabled) return;
 
-            Vector3 vel = _agent.desiredVelocity;
-            vel.y = 0f;
+            Vector3 vel;
+            if (_agent.isOnNavMesh)
+            {
+                vel = _agent.desiredVelocity;
+                vel.y = 0f;
+            }
+            else
+            {
+                Vector3 diff = _navDest - transform.position;
+                diff.y = 0f;
+                vel = diff.sqrMagnitude > 0.25f ? diff.normalized * moveSpeed : Vector3.zero;
+            }
+
             if (vel.sqrMagnitude < 0.01f) return;
 
             _cc.Move(vel.normalized * (moveSpeed * Time.deltaTime));
@@ -288,9 +303,10 @@ namespace BioBreach.Controller.Enemy
         // 공개 NavMesh 헬퍼 (EnemyAction에서 호출)
         // =====================================================================
 
-        /// <summary>NavMesh 목적지 설정. NavMesh가 없으면 무시.</summary>
+        /// <summary>NavMesh 목적지 설정. NavMesh가 없으면 직접 이동용 목적지로만 저장.</summary>
         public void SetNavDestination(Vector3 dest)
         {
+            _navDest = dest;
             if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
             // 목적지가 크게 달라졌을 때만 SetDestination (내부 경로 재계산 비용 절감)
             if (!_agent.hasPath || (dest - _agent.destination).sqrMagnitude > 1f)
@@ -313,24 +329,27 @@ namespace BioBreach.Controller.Enemy
         }
 
         // =====================================================================
-        // Voxel 파기 (NavMesh 경로 막혔을 때 fallback)
+        // Voxel 파기 — 정면 방향
         // =====================================================================
 
-        public void TryDigToward(Vector3 diff)
+        /// <summary>
+        /// 에이전트 정면(transform.forward) 방향의 복셀을 파낸다.
+        /// 공기 블록이어도 무조건 호출 (체크 없음). 쿨다운으로 빈도 제한.
+        /// Dig 후 NavMeshRebakeManager에 dirty 신호를 보내 경로를 갱신시킨다.
+        /// </summary>
+        public void TryDigForward()
         {
             if (worldManager == null || digStrength <= 0f) return;
             if (Time.time - _lastDigTime < DIG_COOLDOWN) return;
 
-            Vector3 hDir = new Vector3(diff.x, 0f, diff.z).normalized;
-            if (hDir.sqrMagnitude < 0.001f) return;
+            // 캐릭터 앞면 바로 너머 지점을 파낸다
+            float   reach    = (_cc != null ? _cc.radius : 0.5f) + 0.3f;
+            Vector3 digPoint = transform.position + transform.forward * reach;
 
-            float forward = (_cc != null ? _cc.radius : 0.5f) + 0.3f;
-            foreach (float h in new[] { -0.5f, 0f, 0.5f })
-            {
-                Vector3 point = transform.position + Vector3.up * h + hDir * forward;
-                worldManager.ModifyTerrain(point, digRadius, digStrength, VoxelType.Air);
-            }
+            worldManager.ModifyTerrain(digPoint, digRadius, digStrength, VoxelType.Air);
+
             _lastDigTime = Time.time;
+            if (_rebakeManager != null) _rebakeManager.MarkDirty();   // 다음 rebakeInterval 후 NavMesh 갱신
         }
 
         // =====================================================================
